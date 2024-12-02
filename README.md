@@ -26,7 +26,7 @@ This project uses [Nix Flakes](https://nixos.wiki/wiki/Flakes) to provide a cons
 
 2. Clone the repository:
    ```bash
-   git clone https://github.com/yourusername/zigos.git
+   git clone https://github.com/BenRachmiel/zigos.git
    cd zigos
    ```
 
