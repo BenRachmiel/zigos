@@ -1,4 +1,5 @@
 const vga = @import("vga.zig");
+const commands = @import("../commands.zig");
 
 pub const Key = union(enum) {
     Char: u8,
@@ -220,13 +221,5 @@ fn shiftChar(c: u8) u8 {
 }
 
 fn handleCommand(command: []const u8) void {
-    const screen = vga.getScreen();
-    if (command.len == 0) {
-        return;
-    }
-
-    // For now, just echo the command
-    screen.write("Wow, did you really just say ");
-    screen.write(command);
-    screen.write("? That's pretty cringe.\n> ");
+    commands.executeCommand(command);
 }

@@ -3,6 +3,7 @@ const interrupts = @import("interrupts.zig");
 const vga = @import("drivers/vga.zig");
 const keyboard = @import("drivers/keyboard.zig");
 const pic = @import("drivers/pic.zig");
+const commands = @import("commands.zig");
 
 const MAGIC: u32 = 0x1BADB002;
 const ALIGN: u32 = 1 << 0;
@@ -37,11 +38,13 @@ export fn kmain() noreturn {
     pic.remap(32, 40);
     screen.write("Initializing keyboard...\n");
     keyboard.initKeyboard();
-
     pic.unmaskIRQ(1);
 
     screen.write("Enabling interrupts...\n");
     enableInterrupts();
+
+    screen.write("Initializing command system...\n");
+    commands.initCommands();
 
     screen.clear();
     screen.showBanner();
