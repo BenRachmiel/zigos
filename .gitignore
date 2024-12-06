@@ -1,4 +1,3 @@
-flake.lock
 zig-out/
 .zig-cache/
 os.iso

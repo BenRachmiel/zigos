@@ -1,4 +1,3 @@
-#!/bin/bash
 rm -rf zig-out zig-cache isofiles os.iso
 
 zig build || exit 1
