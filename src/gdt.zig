@@ -118,8 +118,8 @@ pub const GdtPointer = packed struct {
     base: u32,
 };
 
-var gdt: [GDT_ENTRIES]GdtEntry = undefined;
-var gdt_pointer: GdtPointer = undefined;
+pub var gdt: [GDT_ENTRIES]GdtEntry = undefined;
+pub var gdt_pointer: GdtPointer = undefined;
 
 fn makeKernelCodeFlags() AccessFlags {
     return AccessFlags{

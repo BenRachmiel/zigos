@@ -50,20 +50,24 @@ export fn kmain() noreturn {
     commands.initCommands();
 
     // Wait for Enter key before clearing
-    screen.write("\nPress Enter to continue to shell...\n");
+    screen.write("\nPress left-shift to continue to shell...\n");
     while (true) {
         const key = keyboard.getNextKey();
         if (key) |k| {
+            screen.write("Key caught.\n");
             switch (k) {
                 .Special => |special| {
-                    if (special == .Enter) break;
+                    screen.write("Special caught.\n");
+                    if (special == .LeftShift) {
+                        screen.write("Left-shift caught, breaking.\n");
+                        break;
+                    }
                 },
                 else => {},
             }
         }
         asm volatile ("hlt");
     }
-
     screen.clear();
     screen.showBanner();
 

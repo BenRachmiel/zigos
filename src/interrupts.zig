@@ -83,6 +83,7 @@ pub fn loadIdt(ptr: *const IdtPointer) void {
 // Actual interrupt handlers
 pub export fn keyboardHandler() void {
     const scancode = in(u8, 0x60);
+
     if (keyboard.translateScancode(scancode)) |key| {
         keyboard.getKeyboard().handleKey(key);
     }
