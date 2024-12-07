@@ -2,3 +2,4 @@ zig-out/
 .zig-cache/
 os.iso
 isofiles/
+qemu.log

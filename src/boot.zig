@@ -1,4 +1,5 @@
 const gdt = @import("gdt.zig");
+const tss = @import("tss.zig");
 const interrupts = @import("interrupts.zig");
 const vga = @import("drivers/vga.zig");
 const keyboard = @import("drivers/keyboard.zig");
@@ -29,6 +30,9 @@ export fn kmain() noreturn {
 
     screen.write("Initializing GDT...\n");
     gdt.initGDT();
+
+    screen.write("Initializing TSS...\n");
+    tss.initTSS(@intFromPtr(&stack_bytes) + stack_bytes.len);
 
     screen.write("Initializing interrupts...\n");
     interrupts.initInterrupts();

@@ -1,6 +1,16 @@
 const std = @import("std");
 const vga = @import("drivers/vga.zig");
 
+pub const GDT_ENTRIES = 6; // 5 original entries + TSS
+const TSS_INDEX = 5;
+
+pub const GdtError = error{
+    InvalidBase,
+    InvalidLimit,
+    NullNotPresent,
+    InvalidTSS,
+};
+
 pub const AccessFlags = packed struct {
     accessed: bool = false,
     read_write: bool = false, // readable for code, writable for data
@@ -49,6 +59,17 @@ pub const GranularityFlags = packed struct {
     }
 };
 
+pub const SystemFlags = packed struct {
+    type: u4 = 9, // 9 for TSS
+    reserved: u1 = 0,
+    privilege_level: u2 = 0,
+    present: bool = true,
+
+    pub fn toU8(self: SystemFlags) u8 {
+        return @as(u8, @bitCast(self));
+    }
+};
+
 pub const GdtEntry = packed struct {
     limit_low: u16,
     base_low: u16,
@@ -60,12 +81,7 @@ pub const GdtEntry = packed struct {
     pub fn init(base: u32, limit: u32, access: AccessFlags, gran: GranularityFlags) GdtEntry {
         const screen = vga.getScreen();
         screen.write("[GDT] Creating entry: base=0x");
-        const hex = "0123456789ABCDEF";
-        var i: u5 = 28;
-        while (i > 0) : (i -= 4) {
-            screen.putChar(hex[(@as(u8, @truncate((base >> i) & 0xF)))]);
-        }
-        screen.putChar(hex[(@as(u8, @truncate(base & 0xF)))]);
+        printHex32(base);
         screen.write("\n");
 
         access.debugPrint(screen);
@@ -85,17 +101,11 @@ pub const GdtEntry = packed struct {
         screen.putChar('0' + @as(u8, @truncate(index)));
         screen.write("]: base=0x");
 
-        // Convert to u32 before shifting
         const base = @as(u32, self.base_high) << 24 |
             @as(u32, self.base_middle) << 16 |
             @as(u32, self.base_low);
 
-        const hex = "0123456789ABCDEF";
-        var i: u5 = 28;
-        while (i > 0) : (i -= 4) {
-            screen.putChar(hex[(@as(u8, @truncate((base >> i) & 0xF)))]);
-        }
-        screen.putChar(hex[(@as(u8, @truncate(base & 0xF)))]);
+        printHex32(base);
         screen.write("\n");
 
         const access = AccessFlags.fromU8(self.access);
@@ -108,7 +118,6 @@ pub const GdtPointer = packed struct {
     base: u32,
 };
 
-const GDT_ENTRIES = 5;
 var gdt: [GDT_ENTRIES]GdtEntry = undefined;
 var gdt_pointer: GdtPointer = undefined;
 
@@ -140,30 +149,77 @@ fn makeUserDataFlags() AccessFlags {
     };
 }
 
-fn verifyGDT() void {
+fn makeSystemDescriptor(base: u32, limit: u32, flags: SystemFlags) GdtEntry {
     const screen = vga.getScreen();
-    screen.write("\n=== GDT Verification ===\n");
+    screen.write("[GDT] Creating system descriptor at base=0x");
+    printHex32(base);
+    screen.write(" limit=0x");
+    printHex32(limit);
+    screen.write("\n");
 
-    for (gdt, 0..) |entry, i| {
-        entry.debugPrint(screen, i);
-    }
-
-    screen.write("=== End GDT Verification ===\n\n");
+    return GdtEntry{
+        .limit_low = @truncate(limit & 0xFFFF),
+        .base_low = @truncate(base & 0xFFFF),
+        .base_middle = @truncate((base >> 16) & 0xFF),
+        .access = flags.toU8(),
+        .granularity = (@as(u8, @truncate((limit >> 16) & 0x0F))),
+        .base_high = @truncate((base >> 24) & 0xFF),
+    };
 }
 
-fn printHex(screen: *vga.Screen, value: u8) void {
-    const hex = "0123456789ABCDEF";
-    screen.putChar(hex[(value >> 4) & 0xF]);
-    screen.putChar(hex[value & 0xF]);
+fn verifyGDT() void {
+    const screen = vga.getScreen();
+    screen.write("\n=== Starting GDT Verification ===\n");
+
+    screen.write("Verifying null descriptor...\n");
+    if (gdt[0].access != 0 or gdt[0].base_low != 0 or gdt[0].base_middle != 0 or gdt[0].base_high != 0) {
+        screen.write("ERROR: Null descriptor is not zero!\n");
+        return;
+    }
+    screen.write("Null descriptor OK\n");
+
+    var i: usize = 1;
+    while (i < GDT_ENTRIES) : (i += 1) {
+        screen.write("Verifying entry ");
+        screen.putChar('0' + @as(u8, @truncate(i)));
+        screen.write("...\n");
+
+        // Print raw values first
+        screen.write("Raw values: limit_low=0x");
+        printHex16(gdt[i].limit_low);
+        screen.write(" base_low=0x");
+        printHex16(gdt[i].base_low);
+        screen.write(" access=0x");
+        printHex8(gdt[i].access);
+        screen.write("\n");
+
+        if (i < TSS_INDEX) {
+            const access = AccessFlags.fromU8(gdt[i].access);
+            access.debugPrint(screen);
+        } else {
+            screen.write("TSS entry\n");
+            screen.write("base=0x");
+            const base = @as(u32, gdt[i].base_high) << 24 |
+                @as(u32, gdt[i].base_middle) << 16 |
+                @as(u32, gdt[i].base_low);
+            printHex32(base);
+            screen.write("\n");
+        }
+        screen.write("Entry verified\n");
+    }
+
+    screen.write("=== GDT Verification Complete ===\n\n");
 }
 
 pub fn initGDT() void {
     const screen = vga.getScreen();
-    screen.write("[GDT] Initializing...\n");
+    screen.write("[GDT] Initializing Global Descriptor Table...\n");
 
+    // Null descriptor
     screen.write("[GDT] Setting null descriptor\n");
     gdt[0] = GdtEntry.init(0, 0, AccessFlags{ .present = false, .descriptor_type = false }, GranularityFlags{ .big = false, .granularity = false });
 
+    // Kernel code segment
     screen.write("[GDT] Setting kernel code segment\n");
     gdt[1] = GdtEntry.init(0, 0xFFFFFFFF, AccessFlags{
         .present = true,
@@ -172,6 +228,7 @@ pub fn initGDT() void {
         .privilege_level = 0,
     }, GranularityFlags{});
 
+    // Kernel data segment
     screen.write("[GDT] Setting kernel data segment\n");
     gdt[2] = GdtEntry.init(0, 0xFFFFFFFF, AccessFlags{
         .present = true,
@@ -180,6 +237,7 @@ pub fn initGDT() void {
         .privilege_level = 0,
     }, GranularityFlags{});
 
+    // User code segment
     screen.write("[GDT] Setting user code segment\n");
     gdt[3] = GdtEntry.init(0, 0xFFFFFFFF, AccessFlags{
         .present = true,
@@ -188,6 +246,7 @@ pub fn initGDT() void {
         .privilege_level = 3,
     }, GranularityFlags{});
 
+    // User data segment
     screen.write("[GDT] Setting user data segment\n");
     gdt[4] = GdtEntry.init(0, 0xFFFFFFFF, AccessFlags{
         .present = true,
@@ -196,15 +255,53 @@ pub fn initGDT() void {
         .privilege_level = 3,
     }, GranularityFlags{});
 
+    // TSS entry
+    screen.write("[GDT] Setting up TSS entry...\n");
+    const tss = @import("tss.zig").getTSS();
+    const tss_base = @intFromPtr(tss);
+    const tss_limit = @sizeOf(@TypeOf(tss.*));
+
+    screen.write("[GDT] TSS base=0x");
+    printHex32(tss_base);
+    screen.write(" limit=0x");
+    printHex32(tss_limit);
+    screen.write("\n");
+
+    if (TSS_INDEX >= GDT_ENTRIES) {
+        screen.write("ERROR: TSS_INDEX out of bounds!\n");
+        return;
+    }
+
+    gdt[TSS_INDEX] = makeSystemDescriptor(
+        tss_base,
+        tss_limit,
+        SystemFlags{
+            .type = 9, // 32-bit TSS
+            .privilege_level = 0,
+            .present = true,
+        },
+    );
+
+    screen.write("[GDT] TSS descriptor created\n");
+
     gdt_pointer = GdtPointer{
         .limit = @sizeOf(@TypeOf(gdt)) - 1,
         .base = @intFromPtr(&gdt),
     };
 
-    screen.write("[GDT] Loading...\n");
+    screen.write("[GDT] Loading GDT with TSS...\n");
     loadGDT(&gdt_pointer);
-    screen.write("[GDT] Load complete\n");
+
+    // Load TSS
+    screen.write("[GDT] Loading TSS...\n");
+    loadTSS();
+
+    screen.write("[GDT] Running verification...\n");
+    verifyGDT();
+
+    screen.write("[GDT] Initialization complete!\n");
 }
+
 pub fn loadGDT(ptr: *const GdtPointer) void {
     asm volatile (
         \\lgdt (%[ptr])
@@ -220,4 +317,38 @@ pub fn loadGDT(ptr: *const GdtPointer) void {
         : [ptr] "r" (ptr),
         : "ax"
     );
+}
+
+fn loadTSS() void {
+    asm volatile ("ltr %[sel]"
+        :
+        : [sel] "r" (@as(u16, 0x28)),
+    );
+}
+
+fn printHex32(value: u32) void {
+    const screen = vga.getScreen();
+    const hex = "0123456789ABCDEF";
+    var i: u5 = 28;
+    while (i > 0) : (i -= 4) {
+        screen.putChar(hex[(@as(u8, @truncate((value >> i) & 0xF)))]);
+    }
+    screen.putChar(hex[(@as(u8, @truncate(value & 0xF)))]);
+}
+
+fn printHex8(value: u8) void {
+    const screen = vga.getScreen();
+    const hex = "0123456789ABCDEF";
+    screen.putChar(hex[(value >> 4) & 0xF]);
+    screen.putChar(hex[value & 0xF]);
+}
+
+fn printHex16(value: u16) void {
+    const screen = vga.getScreen();
+    const hex = "0123456789ABCDEF";
+    var i: u4 = 12;
+    while (i > 0) : (i -= 4) {
+        screen.putChar(hex[(@as(u8, @truncate((value >> i) & 0xF)))]);
+    }
+    screen.putChar(hex[(@as(u8, @truncate(value & 0xF)))]);
 }
