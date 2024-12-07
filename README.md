@@ -67,75 +67,100 @@ gdb-os    # Run with GDB server enabled for debugging
 
 ## 🗺️ Development Roadmap
 
-### Milestone 1: Basic Boot
-- **Goal**: Display "Hello World" on screen
-- **Test Criteria**: Text appears in QEMU
-- **Skills**:
-  - Basic Zig syntax and compilation
-  - Multiboot header implementation
-  - GRUB bootloader configuration
-  - Basic VGA text mode output
+### Milestone 1: Basic Boot ✓
+- [x] Multiboot header implementation
+- [x] GRUB bootloader configuration
+- [x] Basic VGA text mode output
+- [x] "Hello World" display
+- Status: **Completed**
 
-### Milestone 2: Screen Output
-- **Goal**: Implement comprehensive screen output functions
-- **Test Criteria**:
-  - Color text display
-  - Screen clearing
-  - Text scrolling
-- **Skills**:
-  - VGA buffer manipulation
-  - Text mode color attributes
-  - Screen driver architecture
+### Milestone 2: Screen Output ✓
+- [x] VGA buffer manipulation
+- [x] Color text display
+- [x] Screen clearing
+- [x] Text scrolling
+- [x] Boot banner display
+- Status: **Completed**
 
-### Milestone 3: Keyboard Input
-- **Goal**: Handle keyboard input
-- **Test Criteria**: Character input display
-- **Skills**:
-  - Interrupt handling (IRQ1)
-  - PS/2 keyboard interface
-  - Scancode translation
-  - Input buffering
+### Milestone 3: Keyboard Input ✓
+- [x] Interrupt handling (IRQ1)
+- [x] PS/2 keyboard interface
+- [x] Scancode translation
+- [x] Input buffering
+- Status: **Completed**
 
 ### Milestone 4: Basic Shell
-- **Goal**: Implement command prompt
-- **Test Criteria**:
-  - Command input/output
-  - Basic command parsing
-- **Skills**:
-  - String manipulation in Zig
-  - Command parsing
-  - Shell architecture
+- [x] Command prompt display
+- [x] Basic input handling
+- [ ] Command parsing system
+- [ ] Basic command execution
+- [ ] Shell environment setup
+- Status: **Partially Complete**
 
 ### Milestone 5: Memory Management
-- **Goal**: Implement basic memory management
-- **Test Criteria**:
-  - Successful page allocation/deallocation
-  - No memory leaks or crashes
-- **Skills**:
-  - Page table manipulation
-  - Physical/virtual memory mapping
-  - Memory allocation algorithms
+#### Phase 1: Foundation
+- [ ] GDT & Basic Segmentation
+  * [ ] Review and enhance current GDT
+  * [ ] Implement proper segment bounds
+  * [ ] Set up user/kernel separation
+  * [ ] Add essential TSS support
+- [ ] Physical Memory Management
+  * [ ] Parse multiboot memory map
+  * [ ] Implement frame allocator
+  * [ ] Add allocation tracking
+- [ ] Debug Infrastructure
+  * [ ] Memory state visualization
+  * [ ] Basic memory dumps
+  * [ ] Allocation tracking tools
+
+#### Phase 2: Virtual Memory
+- [ ] Basic Paging Setup
+  * [ ] Identity mapping for kernel
+  * [ ] 4KB page management
+  * [ ] Page table system
+  * [ ] Page fault handler
+- [ ] Initial Protection
+  * [ ] Kernel/user space separation
+  * [ ] Write protection
+  * [ ] Guard pages
+
+#### Phase 3: Memory Allocation
+- [ ] Kernel Heap
+  * [ ] Slab allocator
+  * [ ] Buddy system
+  * [ ] Memory pools
+- [ ] User Space Memory
+  * [ ] Basic heap management
+  * [ ] Allocation tracking
+
+#### Phase 4: Advanced Features
+- [ ] Enhanced Protection
+  * [ ] Copy-on-write
+  * [ ] Memory mapped files
+  * [ ] Shared memory regions
+- [ ] Optimization
+  * [ ] Memory compaction
+  * [ ] Pressure handling
+- [ ] Advanced Debugging
+  * [ ] Leak detection
+  * [ ] Use-after-free detection
+Status: **In Planning**
 
 ### Milestone 6: Process Management
-- **Goal**: Basic multitasking
-- **Test Criteria**:
-  - Multiple processes running
-  - Context switching
-- **Skills**:
-  - Task scheduling
-  - Context switching
-  - Process state management
+- [ ] Task scheduling
+- [ ] Context switching
+- [ ] Process creation/destruction
+- [ ] Inter-process communication
+- [ ] Basic synchronization primitives
+Status: **Not Started**
 
 ### Milestone 7: File System
-- **Goal**: In-memory file system
-- **Test Criteria**:
-  - Basic file operations (create/read/write)
-  - Directory structure
-- **Skills**:
-  - File system design
-  - Buffer management
-  - File operations
-
+- [ ] Virtual File System (VFS) interface
+- [ ] In-memory file system
+- [ ] Basic file operations
+- [ ] Directory structure
+- [ ] File descriptors
+Status: **Not Started**
 ## 📝 Development Process
 
 For each milestone:
