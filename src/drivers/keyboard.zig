@@ -23,6 +23,11 @@ const LINE_BUFFER_SIZE = 256;
 var line_buffer: [LINE_BUFFER_SIZE]u8 = undefined;
 var buffer_pos: usize = 0;
 
+const KEY_BUFFER_SIZE = 32;
+var key_buffer: [KEY_BUFFER_SIZE]Key = undefined;
+var buffer_read: usize = 0;
+var buffer_write: usize = 0;
+
 const ScancodeMapping = struct {
     scancode: u8,
     key: Key,
@@ -102,8 +107,13 @@ pub const Keyboard = struct {
     }
 
     pub fn handleKey(self: *Keyboard, key: Key) void {
-        const screen = vga.getScreen();
+        const next_write = (buffer_write + 1) % KEY_BUFFER_SIZE;
+        if (next_write != buffer_read) {
+            key_buffer[buffer_write] = key;
+            buffer_write = next_write;
+        }
 
+        const screen = vga.getScreen();
         switch (key) {
             .Char => |c| {
                 if (buffer_pos < LINE_BUFFER_SIZE - 1) {
@@ -159,10 +169,21 @@ pub const Keyboard = struct {
     }
 };
 
-// Global keyboard instance
+pub fn getNextKey() ?Key {
+    if (buffer_read == buffer_write) {
+        return null;
+    }
+
+    const key = key_buffer[buffer_read];
+    buffer_read = (buffer_read + 1) % KEY_BUFFER_SIZE;
+    return key;
+}
+
 var KEYBOARD: Keyboard = undefined;
 
 pub fn initKeyboard() void {
+    buffer_read = 0;
+    buffer_write = 0;
     KEYBOARD = Keyboard.init();
 }
 
@@ -171,7 +192,6 @@ pub fn getKeyboard() *Keyboard {
 }
 
 pub fn translateScancode(scancode: u8) ?Key {
-    // Handle key release
     if (scancode & 0x80 != 0) {
         const released_scancode = scancode & 0x7F;
         for (SCANCODE_MAPPINGS) |mapping| {
@@ -183,7 +203,6 @@ pub fn translateScancode(scancode: u8) ?Key {
         return null;
     }
 
-    // Handle key press
     for (SCANCODE_MAPPINGS) |mapping| {
         if (mapping.scancode == scancode) {
             return mapping.key;

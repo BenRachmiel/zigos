@@ -26,7 +26,6 @@ fn enableInterrupts() void {
 export fn kmain() noreturn {
     vga.initScreen();
     const screen = vga.getScreen();
-    screen.clear();
 
     screen.write("Initializing GDT...\n");
     gdt.initGDT();
@@ -45,6 +44,21 @@ export fn kmain() noreturn {
 
     screen.write("Initializing command system...\n");
     commands.initCommands();
+
+    // Wait for Enter key before clearing
+    screen.write("\nPress Enter to continue to shell...\n");
+    while (true) {
+        const key = keyboard.getNextKey();
+        if (key) |k| {
+            switch (k) {
+                .Special => |special| {
+                    if (special == .Enter) break;
+                },
+                else => {},
+            }
+        }
+        asm volatile ("hlt");
+    }
 
     screen.clear();
     screen.showBanner();
