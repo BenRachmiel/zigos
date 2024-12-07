@@ -76,7 +76,7 @@ pub fn unmaskIRQ(irq: u8) void {
     }
 }
 
-fn io_wait() void {
+pub fn io_wait() void {
     out(u8, 0x80, 0);
 }
 
