@@ -99,11 +99,11 @@ gdb-os    # Run with GDB server enabled for debugging
 
 ### Milestone 5: Memory Management
 #### Phase 1: Foundation
-- [ ] GDT & Basic Segmentation
-  * [ ] Review and enhance current GDT
-  * [ ] Implement proper segment bounds
-  * [ ] Set up user/kernel separation
-  * [ ] Add essential TSS support
+- [x] GDT & Basic Segmentation
+  * [x] Review and enhance current GDT
+  * [x] Implement proper segment bounds
+  * [x] Set up user/kernel separation
+  * [x] Add essential TSS support
 - [ ] Physical Memory Management
   * [ ] Parse multiboot memory map
   * [ ] Implement frame allocator
