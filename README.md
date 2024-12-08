@@ -61,6 +61,7 @@ The development shell provides several aliases for common operations:
 
 ```bash
 run-os    # Run the OS in QEMU
+run-os-debug # Run the OS in QEMU without restart or shutdown (freeze on crash, very useful!)
 debug-os  # Run with interrupt logging (creates qemu.log)
 gdb-os    # Run with GDB server enabled for debugging
 ```
@@ -105,7 +106,7 @@ gdb-os    # Run with GDB server enabled for debugging
   * [x] Set up user/kernel separation
   * [x] Add essential TSS support
 - [ ] Physical Memory Management
-  * [ ] Parse multiboot memory map
+  * [x] Parse multiboot memory map
   * [ ] Implement frame allocator
   * [ ] Add allocation tracking
 - [ ] Debug Infrastructure
