@@ -14,49 +14,37 @@
       {
         devShells.default = pkgs.mkShell {
           buildInputs = with pkgs; [
-            # Zig development
             zig
-            zls # Zig Language Server
-
-            # OS Development tools
+            zls
             qemu
-            xorriso # For creating bootable ISOs
-            grub2 # For bootloader
-            nasm # For any assembly needs
-            gdb # For debugging
-
-            # Build tools
+            xorriso
+            grub2
+            nasm
+            gdb
             gnumake
             binutils
-
-            # Helpful utilities
-            hexdump # For examining binary files
-            xxd # For creating hex dumps
+            hexdump
+            xxd
+            file
+            elfutils 
           ];
 
-          # Set up QEMU aliases for easy testing
           shellHook = ''
-            # Test OS with QEMU
+            # Existing aliases
             alias run-os="qemu-system-i386 -cdrom os.iso"
             
-            # Test with debug output
-            alias debug-os="qemu-system-i386 -cdrom os.iso -d int -D qemu.log"
-            
-            # Test with GDB debugging enabled
-            alias gdb-os="qemu-system-i386 -cdrom os.iso -s -S"
+            # Enhanced debug commands
+            alias run-os-debug="qemu-system-i386 -kernel zig-out/bin/kernel.elf -d guest_errors,int -D qemu.log -no-reboot -no-shutdown"
+            alias dump-header="readelf -x .multiboot zig-out/bin/kernel.elf"
+            alias check-sections="readelf -S zig-out/bin/kernel.elf"
 
             echo "ZigOS Development Environment"
             echo "Available commands:"
-            echo "  run-os    - Run OS in QEMU"
-            echo "  debug-os  - Run OS with interrupt logging"
-            echo "  gdb-os    - Run OS with GDB server enabled"
+            echo "  run-os           - Run OS in QEMU with GRUB"
+            echo "  run-os-debug     - Run kernel directly with debug output"
+            echo "  dump-header      - Show multiboot header contents"
+            echo "  check-sections   - Show ELF section information"
           '';
-        };
-
-        # Basic template for new OS projects
-        templates.default = {
-          path = ./template;
-          description = "Basic ZigOS project template";
         };
       });
 }

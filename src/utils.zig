@@ -12,17 +12,11 @@ pub fn printHex(value: usize) void {
     const screen = vga.getScreen();
     const hex = "0123456789ABCDEF";
 
-    // For 32-bit systems, we need 8 hex digits (32 bits / 4 bits per hex digit)
-    var shift: u5 = 28; // Start with highest nibble (32 - 4 = 28)
-
-    // Print each hex digit, from most significant to least significant
+    var shift: u5 = 28;
     var i: usize = 0;
     while (i < 8) : (i += 1) {
-        // Extract 4 bits (a nibble) by shifting right and masking
         const nibble = (value >> shift) & 0xF;
-        // Convert the 4-bit value to an index into our hex digits array
         screen.putChar(hex[@as(u4, @truncate(nibble))]);
-        // Move to next nibble position if not at the end
         if (shift >= 4) {
             shift -= 4;
         }
@@ -33,4 +27,51 @@ pub fn printHex0x(value: usize) void {
     const screen = vga.getScreen();
     screen.write("0x");
     printHex(value);
+}
+
+pub fn debugPrint(title: []const u8, value: u32) void {
+    const screen = vga.getScreen();
+    screen.write(title);
+    screen.write("0x");
+    printHex(value);
+    screen.write("\n");
+}
+
+pub fn dumpBytes(title: []const u8, addr: [*]const u8, len: usize) void {
+    const screen = vga.getScreen();
+    screen.write(title);
+    for (0..len) |i| {
+        printHex8(addr[i]);
+        screen.write(" ");
+    }
+    screen.write("\n");
+}
+
+pub fn printHex8(value: u8) void {
+    const screen = vga.getScreen();
+    const hex = "0123456789ABCDEF";
+    screen.putChar(hex[(value >> 4) & 0xF]);
+    screen.putChar(hex[value & 0xF]);
+}
+
+pub fn printDec(value: u32) void {
+    const screen = vga.getScreen();
+    if (value == 0) {
+        screen.putChar('0');
+        return;
+    }
+
+    var num_buf: [10]u8 = undefined;
+    var i: usize = 0;
+    var n = value;
+
+    while (n > 0) : (i += 1) {
+        num_buf[i] = @as(u8, @truncate(n % 10)) + '0';
+        n /= 10;
+    }
+
+    while (i > 0) {
+        i -= 1;
+        screen.putChar(num_buf[i]);
+    }
 }
