@@ -55,26 +55,24 @@ pub fn printHex0x(value: usize) void {
     printHex(value);
 }
 
+fn printDigits(screen: *vga.Screen, num: u32) void {
+    if (num == 0) {
+        return;
+    }
+    printDigits(screen, num / 10);
+    const digit = @as(u8, @intCast(num % 10));
+    screen.putChar(digit + '0'); 
+}
+
 pub fn printDec(value: u32) void {
     const screen = vga.getScreen();
+
     if (value == 0) {
         screen.putChar('0');
         return;
     }
 
-    var num_buf: [10]u8 = undefined;
-    var i: usize = 0;
-    var n = value;
-
-    while (n > 0) : (i += 1) {
-        num_buf[i] = @as(u8, @truncate(n % 10)) + '0';
-        n /= 10;
-    }
-
-    while (i > 0) {
-        i -= 1;
-        screen.putChar(num_buf[i]);
-    }
+    printDigits(screen, value);
 }
 
 pub fn debugPrint(title: []const u8, value: u32) void {

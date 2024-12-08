@@ -8,6 +8,7 @@ const pic = @import("drivers/pic.zig");
 const commands = @import("commands.zig");
 const multiboot = @import("multiboot.zig");
 const utils = @import("utils.zig");
+const memory = @import("memory.zig");
 
 const MULTIBOOT_MAGIC = 0x1BADB002;
 const MULTIBOOT_FLAGS = (multiboot.ALIGN | multiboot.MEMINFO);
@@ -68,6 +69,15 @@ fn initializeKernel() void {
     screen.write("- Enabling interrupts... ");
     asm volatile ("sti");
     screen.write("OK\n");
+
+    screen.write("Initializing memory management...\n");
+    memory.initializeMemory(boot_info.?) catch |err| {
+        screen.setColor(.Red, .Black);
+        screen.write("Error: Memory initialization failed - ");
+        screen.write(@errorName(err));
+        screen.write("\n");
+        hang();
+    };
 
     screen.write("- Command System... ");
     commands.initCommands();
