@@ -3,3 +3,7 @@ zig-out/
 os.iso
 isofiles/
 qemu.log
+flake.lock
+qemu.log
+Dockerfile
+isodir/
