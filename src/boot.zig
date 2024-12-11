@@ -11,7 +11,7 @@ const utils = @import("utils.zig");
 const memory = @import("memory.zig");
 
 const MULTIBOOT_MAGIC = 0x1BADB002;
-const MULTIBOOT_FLAGS = (multiboot.ALIGN | multiboot.MEMINFO);
+const MULTIBOOT_FLAGS = (multiboot.ALIGN | multiboot.MEMINFO | multiboot.MMAP_INFO);
 const MULTIBOOT_CHECKSUM = 0 -% (MULTIBOOT_MAGIC + MULTIBOOT_FLAGS);
 
 export var multiboot_header align(4) linksection(".multiboot") = [_]u32{

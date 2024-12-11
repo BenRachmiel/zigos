@@ -5,6 +5,7 @@ pub const MAGIC: u32 = 0x1BADB002;
 pub const BOOTLOADER_MAGIC: u32 = 0x2BADB002;
 pub const ALIGN: u32 = 1 << 0;
 pub const MEMINFO: u32 = 1 << 1;
+pub const MMAP_INFO: u32 = 1 << 6;
 
 pub const MultibootInfo = packed struct {
     flags: u32,
@@ -90,13 +91,53 @@ pub const MultibootInfo = packed struct {
     }
 
     pub fn hasMemoryMap(self: *const MultibootInfo) bool {
+        const screen = vga.getScreen();
         const MMAP_FLAG = 1 << 6;
-        if ((self.flags & MMAP_FLAG) == 0) return false;
 
-        if (self.mmap_addr < 0x100000) return false; // Should be above 1MB
-        if (self.mmap_length == 0) return false;
-        if (self.mmap_length > 0x10000) return false; // Arbitrary reasonable max
+        screen.write("\nDebug: Memory Map Validation\n");
+        screen.write("---------------------------\n");
 
+        // Check flag
+        screen.write("1. Checking MMAP flag (0x40): ");
+        utils.printHex(self.flags);
+        screen.write(" & ");
+        utils.printHex(MMAP_FLAG);
+        screen.write(" = ");
+        utils.printHex(self.flags & MMAP_FLAG);
+        screen.write("\n");
+        if ((self.flags & MMAP_FLAG) == 0) {
+            screen.write("   FAILED: MMAP flag not set\n");
+            return false;
+        }
+
+        // Check address
+        screen.write("2. Checking mmap_addr (must be > 0x1000): 0x");
+        utils.printHex(self.mmap_addr);
+        screen.write("\n");
+        if (self.mmap_addr < 0x1000) {
+            screen.write("   FAILED: mmap_addr too low\n");
+            return false;
+        }
+
+        // Check length not zero
+        screen.write("3. Checking mmap_length (must be > 0): ");
+        utils.printDec(self.mmap_length);
+        screen.write("\n");
+        if (self.mmap_length == 0) {
+            screen.write("   FAILED: mmap_length is zero\n");
+            return false;
+        }
+
+        // Check length not too large
+        screen.write("4. Checking mmap_length (must be < 0x10000): 0x");
+        utils.printHex(self.mmap_length);
+        screen.write("\n");
+        if (self.mmap_length > 0x10000) {
+            screen.write("   FAILED: mmap_length too large\n");
+            return false;
+        }
+
+        screen.write("All checks PASSED\n");
         return true;
     }
 };

@@ -1,5 +1,7 @@
-#!/bin/bash
+#!/usr/bin/env bash
 set -e
+
+rm -rf zig-out zig-cache isofiles os.iso
 
 # Set up the grub-mkrescue alias for macOS
 if [[ "$OSTYPE" == "darwin"* ]]; then
@@ -7,25 +9,21 @@ if [[ "$OSTYPE" == "darwin"* ]]; then
 fi
 
 # Build the kernel
-zig build
+zig build || exit 1
 
-# Create ISO directory structure
-rm -rf isodir
-mkdir -p isodir/boot/grub
-cp zig-out/bin/kernel.elf isodir/boot/
+mkdir -p isofiles/boot/grub
 
 # Create GRUB config
-cat > isodir/boot/grub/grub.cfg << EOF
-menuentry "ZigOS" {
+echo 'menuentry "ZigOS" {
     multiboot /boot/kernel.elf
-}
-EOF
+    boot
+}' > isofiles/boot/grub/grub.cfg
 
 # Create the ISO
 if [[ "$OSTYPE" == "darwin"* ]]; then
-    podman run --rm -v "$PWD":/build:Z zigos-builder grub-mkrescue -o os.iso isodir
+    podman run --rm -v "$PWD":/build:Z zigos-builder grub-mkrescue -o os.iso isofiles
 else
-    grub-mkrescue -o os.iso isodir
+    grub-mkrescue -o os.iso isofiles
 fi
 
 echo "Build complete! Run with: run-os"
