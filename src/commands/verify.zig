@@ -2,7 +2,7 @@ const vga = @import("../drivers/vga.zig");
 const gdt = @import("../gdt.zig");
 const tss = @import("../tss.zig");
 
-pub fn verifyGdtTss(args: []const u8) void {
+pub fn execute(args: []const u8) void {
     const screen = vga.getScreen();
     _ = args;
 
@@ -61,7 +61,7 @@ pub fn verifyGdtTss(args: []const u8) void {
     verifyTssFields();
 
     screen.color = original_color;
-    screen.write("\n=== GDT & TSS Verification Complete ===\n> ");
+    screen.write("\n=== GDT & TSS Verification Complete ===\n");
 }
 
 fn verifyNullDescriptor() void {

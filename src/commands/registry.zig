@@ -1,25 +1,55 @@
 const vga = @import("../drivers/vga.zig");
-const verification = @import("verification.zig");
+const verify_command = @import("verify.zig");
+const memory_command = @import("memory.zig");
+const help_command = @import("help.zig");
+const clear_command = @import("clear.zig");
 
-var handler: ?*const fn ([]const u8) void = null;
+const CommandFn = *const fn ([]const u8) void;
 
-pub fn register(name: []const u8) bool {
-    _ = name;
-    handler = verification.verifyGdtTss;
-    return true;
-}
+const StaticCommand = struct {
+    name: []const u8,
+    handler: CommandFn,
+};
+
+const COMMANDS = [_]StaticCommand{
+    .{ .name = "help", .handler = help_command.execute },
+    .{ .name = "memory", .handler = memory_command.execute },
+    .{ .name = "verify", .handler = verify_command.execute },
+    .{ .name = "clear", .handler = clear_command.execute },
+};
 
 pub fn executeCommand(input: []const u8) void {
     const screen = vga.getScreen();
 
-    if (handler) |h| {
-        if (input.len == 6 and input[0] == 'v' and input[1] == 'e' and
-            input[2] == 'r' and input[3] == 'i' and
-            input[4] == 'f' and input[5] == 'y')
-        {
-            h("");
-            return;
+    if (input.len == 0) {
+        screen.write("> ");
+        return;
+    }
+
+    // Static command matching
+    inline for (COMMANDS) |cmd| {
+        if (input.len == cmd.name.len) {
+            var matches = true;
+            for (input, 0..) |c, i| {
+                if (c != cmd.name[i]) {
+                    matches = false;
+                    break;
+                }
+            }
+            if (matches) {
+                cmd.handler("");
+                screen.write("> ");
+                return;
+            }
         }
     }
-    screen.write("> ");
+
+    screen.write("Unknown command: ");
+    screen.write(input);
+    screen.write("\nType 'help' for available commands\n> ");
+}
+
+pub fn register(name: []const u8) bool {
+    _ = name;
+    return true;
 }
