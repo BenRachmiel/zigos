@@ -20,7 +20,11 @@ export var multiboot_header align(4) linksection(".multiboot") = [_]u32{
     MULTIBOOT_CHECKSUM,
 };
 
-var stack_bytes: [16 * 1024]u8 align(16) linksection(".bss") = undefined;
+var _kernel_stack: [16 * 1024]u8 align(16) linksection(".bss") = undefined;
+var _interrupt_stack: [8 * 1024]u8 align(16) linksection(".bss") = undefined;
+pub const kernel_stack = &_kernel_stack;
+pub const interrupt_stack = &_interrupt_stack;
+
 var boot_info: ?*multiboot.MultibootInfo = null;
 
 export var debug_eax: u32 = undefined;
@@ -35,7 +39,7 @@ export fn _start() callconv(.Naked) noreturn {
         \\push %%eax
         \\call kmain
         :
-        : [stack_ptr] "r" (@intFromPtr(&stack_bytes) + stack_bytes.len),
+        : [stack_ptr] "r" (@intFromPtr(&kernel_stack) + kernel_stack.len),
         : "memory"
     );
 }
@@ -50,7 +54,7 @@ fn initializeKernel() void {
     screen.write("OK\n");
 
     screen.write("- Task State Segment... ");
-    tss.initTSS(@intFromPtr(&stack_bytes) + stack_bytes.len);
+    tss.initTSS(@intFromPtr(&kernel_stack) + kernel_stack.len, @intFromPtr(&interrupt_stack) + interrupt_stack.len);
     screen.write("OK\n");
 
     screen.write("- Interrupt Descriptor Table... ");

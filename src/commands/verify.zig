@@ -1,293 +1,285 @@
 const vga = @import("../drivers/vga.zig");
+const utils = @import("../utils.zig");
 const gdt = @import("../gdt.zig");
 const tss = @import("../tss.zig");
+const boot = @import("../boot.zig");
+
+fn calculateLimit(entry: gdt.GdtEntry) u32 {
+    const g_bit = (entry.granularity & 0x80) != 0;
+    const raw_limit = (@as(u32, entry.granularity & 0x0F) << 16) | entry.limit_low;
+    return if (g_bit) (raw_limit << 12) | 0xFFF else raw_limit;
+}
+
+fn verifySegmentDescriptor(entry: gdt.GdtEntry, index: usize, expected_base: u32, expected_limit: u32, expected_access: gdt.AccessFlags) void {
+    const screen = vga.getScreen();
+
+    const actual_base = @as(u32, entry.base_high) << 24 |
+        @as(u32, entry.base_middle) << 16 |
+        entry.base_low;
+
+    const actual_limit = calculateLimit(entry);
+
+    screen.write("Verifying GDT[");
+    utils.printDec(@as(u32, @truncate(index)));
+    screen.write("]:\n");
+
+    screen.write("  Granularity byte: 0x");
+    utils.printHex8(entry.granularity);
+    screen.write(" (G=");
+    screen.write(if (entry.granularity & 0x80 != 0) "1" else "0");
+    screen.write(" D=");
+    screen.write(if (entry.granularity & 0x40 != 0) "1" else "0");
+    screen.write(")\n");
+
+    screen.write("  Base: Expected 0x");
+    utils.printHex32(expected_base);
+    screen.write(", Got 0x");
+    utils.printHex32(actual_base);
+    if (actual_base != expected_base) {
+        screen.setColor(.Red, .Black);
+        screen.write(" [MISMATCH]");
+        utils.delay();
+        screen.setColor(.White, .Black);
+    }
+    screen.write("\n");
+
+    screen.write("  Limit: Expected 0x");
+    utils.printHex32(expected_limit);
+    screen.write(", Got 0x");
+    utils.printHex32(actual_limit);
+    if (actual_limit != expected_limit) {
+        screen.setColor(.Red, .Black);
+        screen.write(" [MISMATCH]");
+        utils.delay();
+        screen.setColor(.White, .Black);
+    }
+    screen.write("\n");
+
+    screen.write("  Access: Expected 0x");
+    utils.printHex8(expected_access.toU8());
+    screen.write(", Got 0x");
+    utils.printHex8(entry.access);
+    if (entry.access != expected_access.toU8()) {
+        screen.setColor(.Red, .Black);
+        screen.write(" [MISMATCH]");
+        utils.delay();
+        screen.setColor(.White, .Black);
+    }
+    screen.write("\n");
+}
+
+fn verifyNullDescriptor() void {
+    const screen = vga.getScreen();
+    screen.write("\nVerifying Null Descriptor...\n");
+    const null_desc = gdt.gdt[0];
+
+    if (null_desc.access != 0 or null_desc.base_low != 0 or
+        null_desc.base_middle != 0 or null_desc.base_high != 0)
+    {
+        screen.setColor(.Red, .Black);
+        screen.write("ERROR: Null descriptor is not zero!\n");
+        utils.delay();
+        screen.setColor(.White, .Black);
+    } else {
+        screen.setColor(.Green, .Black);
+        screen.write("Null descriptor OK\n");
+        screen.setColor(.White, .Black);
+    }
+}
+
+fn verifyCodeAndDataSegments() void {
+    verifySegmentDescriptor(gdt.gdt[1], 1, 0, 0xFFFFFFFF, gdt.makeKernelCodeFlags());
+    verifySegmentDescriptor(gdt.gdt[2], 2, 0, 0xFFFFFFFF, gdt.makeKernelDataFlags());
+    verifySegmentDescriptor(gdt.gdt[3], 3, 0, 0xFFFFFFFF, gdt.makeUserCodeFlags());
+    verifySegmentDescriptor(gdt.gdt[4], 4, 0, 0xFFFFFFFF, gdt.makeUserDataFlags());
+}
+
+fn verifyStackSetup() void {
+    const screen = vga.getScreen();
+
+    screen.write("\n=== Stack Verification ===\n");
+
+    const current_esp: usize = asm volatile ("mov %%esp, %[ret]"
+        : [ret] "=r" (-> usize),
+    );
+
+    screen.write("Current ESP: 0x");
+    utils.printHex(current_esp);
+    screen.write("\n");
+
+    const tss_ptr = tss.getTSS();
+    screen.write("TSS ESP0: 0x");
+    utils.printHex(tss_ptr.esp0);
+    screen.write("\n");
+
+    screen.write("TSS IST1: 0x");
+    utils.printHex(tss_ptr.ist1);
+    screen.write("\n");
+
+    const kernel_stack_bottom = @intFromPtr(boot.kernel_stack);
+    const kernel_stack_top = kernel_stack_bottom + boot.kernel_stack.len;
+    const interrupt_stack_bottom = @intFromPtr(boot.interrupt_stack);
+    const interrupt_stack_top = interrupt_stack_bottom + boot.interrupt_stack.len;
+
+    screen.write("\nStack Ranges:\n");
+    screen.write("Kernel Stack:    0x");
+    utils.printHex(kernel_stack_bottom);
+    screen.write(" - 0x");
+    utils.printHex(kernel_stack_top);
+    screen.write("\n");
+
+    screen.write("Interrupt Stack: 0x");
+    utils.printHex(interrupt_stack_bottom);
+    screen.write(" - 0x");
+    utils.printHex(interrupt_stack_top);
+    screen.write("\n");
+
+    screen.write("\nStack Pointer Validation:\n");
+    if (current_esp < kernel_stack_bottom or current_esp > kernel_stack_top) {
+        screen.setColor(.Red, .Black);
+        screen.write("ERROR: Current stack pointer outside kernel stack range!\n");
+        utils.delay();
+        screen.setColor(.White, .Black);
+    } else {
+        screen.setColor(.Green, .Black);
+        screen.write("Current stack pointer in valid range\n");
+        screen.setColor(.White, .Black);
+    }
+
+    if (tss_ptr.esp0 != kernel_stack_top) {
+        screen.setColor(.Red, .Black);
+        screen.write("ERROR: TSS ESP0 not pointing to kernel stack top!\n");
+        screen.write("Expected: 0x");
+        utils.printHex(kernel_stack_top);
+        screen.write(" Got: 0x");
+        utils.printHex(tss_ptr.esp0);
+        utils.delay();
+        screen.write("\n");
+        screen.setColor(.White, .Black);
+    } else {
+        screen.setColor(.Green, .Black);
+        screen.write("TSS ESP0 correctly configured\n");
+        screen.setColor(.White, .Black);
+    }
+
+    if (tss_ptr.ist1 != interrupt_stack_top) {
+        screen.setColor(.Red, .Black);
+        screen.write("ERROR: TSS IST1 not pointing to interrupt stack top!\n");
+        screen.write("Expected: 0x");
+        utils.printHex(interrupt_stack_top);
+        screen.write(" Got: 0x");
+        utils.printHex(tss_ptr.ist1);
+        utils.delay();
+        screen.write("\n");
+        screen.setColor(.White, .Black);
+    } else {
+        screen.setColor(.Green, .Black);
+        screen.write("TSS IST1 correctly configured\n");
+        screen.setColor(.White, .Black);
+    }
+}
+
+fn verifyTSS() void {
+    const screen = vga.getScreen();
+    const current_tss = tss.getTSS();
+
+    screen.write("\n=== TSS Verification ===\n");
+
+    screen.write("SS0: Expected 0x10, Got 0x");
+    utils.printHex32(current_tss.ss0);
+    if (current_tss.ss0 != 0x10) {
+        screen.setColor(.Red, .Black);
+        screen.write(" [MISMATCH]");
+        utils.delay();
+        screen.setColor(.White, .Black);
+    }
+    screen.write("\n");
+
+    screen.write("ESP0: 0x");
+    utils.printHex32(current_tss.esp0);
+    const kernel_stack_top = @intFromPtr(boot.kernel_stack) + boot.kernel_stack.len;
+    if (current_tss.esp0 != kernel_stack_top) {
+        screen.setColor(.Red, .Black);
+        screen.write(" [INVALID]");
+        utils.delay();
+        screen.setColor(.White, .Black);
+    }
+    screen.write("\n");
+
+    screen.write("IST1: 0x");
+    utils.printHex32(current_tss.ist1);
+    const interrupt_stack_top = @intFromPtr(boot.interrupt_stack) + boot.interrupt_stack.len;
+    if (current_tss.ist1 != interrupt_stack_top) {
+        screen.setColor(.Red, .Black);
+        screen.write(" [INVALID]");
+        utils.delay();
+        screen.setColor(.White, .Black);
+    }
+    screen.write("\n");
+
+    const segments = [_]struct { name: []const u8, value: u32 }{
+        .{ .name = "CS", .value = current_tss.cs },
+        .{ .name = "SS", .value = current_tss.ss },
+        .{ .name = "DS", .value = current_tss.ds },
+        .{ .name = "ES", .value = current_tss.es },
+        .{ .name = "FS", .value = current_tss.fs },
+        .{ .name = "GS", .value = current_tss.gs },
+    };
+
+    screen.write("\nVerifying null segments:\n");
+    for (segments) |seg| {
+        screen.write("  ");
+        screen.write(seg.name);
+        screen.write(": ");
+        if (seg.value != 0) {
+            screen.setColor(.Red, .Black);
+            screen.write("NOT NULL (0x");
+            utils.printHex32(seg.value);
+            screen.write(")");
+            utils.delay();
+            screen.setColor(.White, .Black);
+        } else {
+            screen.setColor(.Green, .Black);
+            screen.write("NULL");
+            screen.setColor(.White, .Black);
+        }
+        screen.write("\n");
+    }
+
+    screen.write("\nI/O Map Base: Expected ");
+    utils.printDec(@sizeOf(tss.TSS));
+    screen.write(", Got ");
+    utils.printDec(current_tss.iomap_base);
+    if (current_tss.iomap_base != @sizeOf(tss.TSS)) {
+        screen.setColor(.Red, .Black);
+        screen.write(" [MISMATCH]");
+        utils.delay();
+        screen.setColor(.White, .Black);
+    }
+    screen.write("\n");
+}
 
 pub fn execute(args: []const u8) void {
     const screen = vga.getScreen();
     _ = args;
 
-    screen.write("\n=== Starting GDT & TSS Verification ===\n\n");
+    screen.write("\n=== Starting System Verification ===\n");
 
-    // Store original color
-    const original_color = screen.color;
+    screen.write("\nStep 1: Stack Verification\n");
+    screen.write("-----------------------\n");
+    verifyStackSetup();
 
-    // Verify GDT size and pointer
-    screen.write("Checking GDT pointer... ");
-    const gdt_ptr = @as(*const gdt.GdtPointer, @ptrFromInt(@intFromPtr(&gdt.gdt_pointer)));
-    if (gdt_ptr.limit != (@sizeOf(@TypeOf(gdt.gdt)) - 1)) {
-        screen.setColor(.Red, .Black);
-        screen.write("ERROR: Invalid GDT limit\n");
-        screen.setColor(.White, .Black);
-        screen.write("  Expected: ");
-        printHex16(@as(u16, @truncate(@sizeOf(@TypeOf(gdt.gdt)) - 1)));
-        screen.write("\n  Got:      ");
-        printHex16(gdt_ptr.limit);
-        screen.write("\n");
-    } else {
-        screen.setColor(.Green, .Black);
-        screen.write("OK\n");
-    }
-    screen.setColor(.LightGrey, .Black);
-
-    // Verify each GDT entry
-    screen.write("\nVerifying GDT entries:\n");
-
-    // Null descriptor
-    screen.write("\n[Entry 0] Null Descriptor ");
+    screen.write("\nStep 2: GDT Verification\n");
+    screen.write("----------------------\n");
     verifyNullDescriptor();
+    verifyCodeAndDataSegments();
 
-    // Kernel code segment
-    screen.write("\n[Entry 1] Kernel Code Segment ");
-    verifyCodeSegment(1, 0);
+    screen.write("\nStep 3: TSS Verification\n");
+    screen.write("----------------------\n");
+    verifyTSS();
 
-    // Kernel data segment
-    screen.write("\n[Entry 2] Kernel Data Segment ");
-    verifyDataSegment(2, 0);
-
-    // User code segment
-    screen.write("\n[Entry 3] User Code Segment ");
-    verifyCodeSegment(3, 3);
-
-    // User data segment
-    screen.write("\n[Entry 4] User Data Segment ");
-    verifyDataSegment(4, 3);
-
-    // TSS entry
-    screen.write("\n[Entry 5] TSS Segment ");
-    verifyTssSegment();
-
-    // Verify TSS
-    screen.write("\nVerifying TSS: ");
-    verifyTssFields();
-
-    screen.color = original_color;
-    screen.write("\n=== GDT & TSS Verification Complete ===\n");
-}
-
-fn verifyNullDescriptor() void {
-    const screen = vga.getScreen();
-    const entry = gdt.gdt[0];
-
-    var valid = true;
-    if (entry.limit_low != 0) valid = false;
-    if (entry.base_low != 0) valid = false;
-    if (entry.base_middle != 0) valid = false;
-    if (entry.access != 0) valid = false;
-    if (entry.granularity != 0) valid = false;
-    if (entry.base_high != 0) valid = false;
-
-    if (valid) {
-        screen.setColor(.Green, .Black);
-        screen.write("  Status: OK\n");
-    } else {
-        screen.setColor(.Red, .Black);
-        screen.write("  Status: ERROR - Non-zero values in null descriptor\n");
-        printGdtEntry(0);
-    }
-    screen.setColor(.LightGrey, .Black);
-}
-
-fn verifyCodeSegment(index: usize, ring: u2) void {
-    const screen = vga.getScreen();
-    const entry = gdt.gdt[index];
-    var valid = true;
-
-    // Base should be 0
-    if (entry.base_low != 0 or entry.base_middle != 0 or entry.base_high != 0) {
-        valid = false;
-        screen.setColor(.Red, .Black);
-        screen.write("  ERROR: Non-zero base address\n");
-    }
-
-    // Limit should be 0xFFFFF (full 4GB)
-    const full_limit = (@as(u32, entry.granularity & 0x0F) << 16) | entry.limit_low;
-    if (full_limit != 0xFFFFF) {
-        valid = false;
-        screen.setColor(.Red, .Black);
-        screen.write("  ERROR: Invalid limit\n");
-    }
-
-    // Verify access rights
-    const access = gdt.AccessFlags.fromU8(entry.access);
-    if (!access.present or !access.executable or access.privilege_level != ring) {
-        valid = false;
-        screen.setColor(.Red, .Black);
-        screen.write("  ERROR: Invalid access rights\n");
-    }
-
-    if (valid) {
-        screen.setColor(.Green, .Black);
-        screen.write("  Status: OK\n");
-    } else {
-        printGdtEntry(index);
-    }
-    screen.setColor(.LightGrey, .Black);
-}
-
-fn verifyDataSegment(index: usize, ring: u2) void {
-    const screen = vga.getScreen();
-    const entry = gdt.gdt[index];
-    var valid = true;
-
-    // Base should be 0
-    if (entry.base_low != 0 or entry.base_middle != 0 or entry.base_high != 0) {
-        valid = false;
-        screen.setColor(.Red, .Black);
-        screen.write("  ERROR: Non-zero base address\n");
-    }
-
-    // Limit should be 0xFFFFF (full 4GB)
-    const full_limit = (@as(u32, entry.granularity & 0x0F) << 16) | entry.limit_low;
-    if (full_limit != 0xFFFFF) {
-        valid = false;
-        screen.setColor(.Red, .Black);
-        screen.write("  ERROR: Invalid limit\n");
-    }
-
-    // Verify access rights
-    const access = gdt.AccessFlags.fromU8(entry.access);
-    if (!access.present or access.executable or access.privilege_level != ring) {
-        valid = false;
-        screen.setColor(.Red, .Black);
-        screen.write("  ERROR: Invalid access rights\n");
-    }
-
-    if (valid) {
-        screen.setColor(.Green, .Black);
-        screen.write("  Status: OK\n");
-    } else {
-        printGdtEntry(index);
-    }
-    screen.setColor(.LightGrey, .Black);
-}
-
-fn verifyTssSegment() void {
-    const screen = vga.getScreen();
-    const entry = gdt.gdt[5];
-    var valid = true;
-
-    // Get TSS base from entry
-    const base = @as(u32, entry.base_high) << 24 |
-        @as(u32, entry.base_middle) << 16 |
-        entry.base_low;
-
-    // Verify base points to our TSS
-    if (base != @intFromPtr(tss.getTSS())) {
-        valid = false;
-        screen.setColor(.Red, .Black);
-        screen.write("  ERROR: Invalid TSS base address\n");
-        screen.write("  Expected: ");
-        printHex32(@intFromPtr(tss.getTSS()));
-        screen.write("\n  Got:      ");
-        printHex32(base);
-        screen.write("\n");
-    }
-
-    // Verify limit matches TSS size
-    const full_limit = (@as(u32, entry.granularity & 0x0F) << 16) | entry.limit_low;
-    if (full_limit != @sizeOf(tss.TSS)) {
-        valid = false;
-        screen.setColor(.Red, .Black);
-        screen.write("  ERROR: Invalid TSS limit\n");
-        screen.write("  Expected: ");
-        printHex32(@sizeOf(tss.TSS));
-        screen.write("\n  Got:      ");
-        printHex32(full_limit);
-        screen.write("\n");
-    }
-
-    if (valid) {
-        screen.setColor(.Green, .Black);
-        screen.write("  Status: OK\n");
-    } else {
-        printGdtEntry(5);
-    }
-    screen.setColor(.LightGrey, .Black);
-}
-
-fn verifyTssFields() void {
-    const screen = vga.getScreen();
-    const tss_ptr = tss.getTSS();
-    var valid = true;
-
-    // Verify SS0 is kernel data segment
-    if (tss_ptr.ss0 != 0x10) {
-        valid = false;
-        screen.setColor(.Red, .Black);
-        screen.write("  ERROR: Invalid SS0 value\n");
-        screen.write("  Expected: 0x10\n  Got:      ");
-        printHex32(tss_ptr.ss0);
-        screen.write("\n");
-    }
-
-    // ESP0 should not be 0
-    if (tss_ptr.esp0 == 0) {
-        valid = false;
-        screen.setColor(.Red, .Black);
-        screen.write("  ERROR: ESP0 is zero\n");
-    }
-
-    // IOPB offset should be TSS size to indicate no I/O permission map
-    if (tss_ptr.iomap_base != @sizeOf(tss.TSS)) {
-        valid = false;
-        screen.setColor(.Red, .Black);
-        screen.write("  ERROR: Invalid IOPB offset\n");
-        screen.write("  Expected: ");
-        printHex16(@as(u16, @truncate(@sizeOf(tss.TSS))));
-        screen.write("\n  Got:      ");
-        printHex16(tss_ptr.iomap_base);
-        screen.write("\n");
-    }
-
-    if (valid) {
-        screen.setColor(.Green, .Black);
-        screen.write("  Status: OK\n");
-    }
-    screen.setColor(.LightGrey, .Black);
-}
-
-fn printGdtEntry(index: usize) void {
-    const screen = vga.getScreen();
-    const entry = gdt.gdt[index];
-
-    screen.write("  Details:\n");
-    screen.write("    Base:  ");
-    printHex32(@as(u32, entry.base_high) << 24 |
-        @as(u32, entry.base_middle) << 16 |
-        entry.base_low);
-    screen.write("\n    Limit: ");
-    printHex32(@as(u32, entry.granularity & 0x0F) << 16 |
-        entry.limit_low);
-    screen.write("\n    Access: ");
-    printHex8(entry.access);
-    screen.write("\n    Flags:  ");
-    printHex8(entry.granularity);
     screen.write("\n");
-}
-
-fn printHex32(value: u32) void {
-    const screen = vga.getScreen();
-    const hex = "0123456789ABCDEF";
-    var i: u5 = 28;
-    while (i > 0) : (i -= 4) {
-        screen.putChar(hex[(@as(u8, @truncate((value >> i) & 0xF)))]);
-    }
-    screen.putChar(hex[(@as(u8, @truncate(value & 0xF)))]);
-}
-
-fn printHex16(value: u16) void {
-    const screen = vga.getScreen();
-    const hex = "0123456789ABCDEF";
-    var i: u4 = 12;
-    while (i > 0) : (i -= 4) {
-        screen.putChar(hex[(@as(u8, @truncate((value >> i) & 0xF)))]);
-    }
-    screen.putChar(hex[(@as(u8, @truncate(value & 0xF)))]);
-}
-
-fn printHex8(value: u8) void {
-    const screen = vga.getScreen();
-    const hex = "0123456789ABCDEF";
-    screen.putChar(hex[(value >> 4) & 0xF]);
-    screen.putChar(hex[value & 0xF]);
+    screen.write("================================\n");
+    screen.write("System Verification Complete\n");
+    screen.write("================================\n");
 }
