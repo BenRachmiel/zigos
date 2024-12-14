@@ -50,9 +50,12 @@ pub fn getInterruptStackTop() usize {
 pub const kernel_stack = &_kernel_stack;
 pub const interrupt_stack = &_interrupt_stack;
 
+extern const __kernel_stack_end: u8;
+
 export fn _start() callconv(.Naked) noreturn {
     asm volatile (
-        \\mov $0x00148000, %%esp
+        \\.global _start
+        \\mov $__kernel_stack_end, %%esp
         \\push %%ebx
         \\push %%eax
         \\call kmain
