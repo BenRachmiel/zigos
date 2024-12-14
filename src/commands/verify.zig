@@ -3,11 +3,22 @@ const utils = @import("../utils.zig");
 const gdt = @import("../gdt.zig");
 const tss = @import("../tss.zig");
 const boot = @import("../boot.zig");
+const memory = @import("../memory.zig");
 
 fn calculateLimit(entry: gdt.GdtEntry) u32 {
-    const g_bit = (entry.granularity & 0x80) != 0;
+    const screen = vga.getScreen();
+
+    screen.write("\nLimit calculation:\n");
+    screen.write("  granularity byte: 0x");
+    utils.printHex8(entry.granularity);
+    screen.write("\n  upper bits: 0x");
+    utils.printHex8(entry.granularity & 0x0F);
+    screen.write("\n  limit_low: 0x");
+    utils.printHex16(entry.limit_low);
+    screen.write("\n");
+
     const raw_limit = (@as(u32, entry.granularity & 0x0F) << 16) | entry.limit_low;
-    return if (g_bit) (raw_limit << 12) | 0xFFF else raw_limit;
+    return raw_limit;
 }
 
 fn verifySegmentDescriptor(entry: gdt.GdtEntry, index: usize, expected_base: u32, expected_limit: u32, expected_access: gdt.AccessFlags) void {
@@ -89,13 +100,15 @@ fn verifyNullDescriptor() void {
 
 fn verifyCodeAndDataSegments() void {
     const screen = vga.getScreen();
+    const memory_stats = memory.getMemoryStats();
+    const phys_limit: u32 = @truncate(memory_stats.total_memory - 1);
 
-    const memory_size = boot.boot_info.?.getMemorySize();
-    const phys_limit: u32 = @truncate(memory_size - 1);
-
-    screen.write("\nPhysical Memory Limit: 0x");
+    screen.write("\nPhysical Memory: ");
+    utils.printDec(@truncate(memory_stats.total_memory / 1024 / 1024));
+    screen.write(" MB (limit: 0x");
     utils.printHex32(phys_limit);
-    screen.write("\n");
+    screen.write(")\n");
+    utils.delay();
 
     verifySegmentDescriptor(gdt.gdt[1], 1, 0, phys_limit, gdt.makeKernelCodeFlags());
     verifySegmentDescriptor(gdt.gdt[2], 2, 0, phys_limit, gdt.makeKernelDataFlags());
@@ -196,7 +209,30 @@ fn verifyStackSetup() void {
 
 fn verifyTSS() void {
     const screen = vga.getScreen();
+    screen.write("\nStarting TSS verification...\n");
+
+    // Print TSS pointer
+    screen.write("TSS pointer: 0x");
+    utils.printHex(@intFromPtr(tss.getTSS()));
+    screen.write("\n");
+
     const current_tss = tss.getTSS();
+    screen.write("Got TSS structure\n");
+
+    // Check SS0 first
+    screen.write("Checking SS0...\n");
+    screen.write("SS0: Expected 0x10, Got 0x");
+    utils.printHex32(current_tss.ss0);
+    screen.write("\n");
+
+    // Try reading each segment value individually
+    screen.write("Reading CS: 0x");
+    utils.printHex32(current_tss.cs);
+    screen.write("\nReading SS: 0x");
+    utils.printHex32(current_tss.ss);
+    screen.write("\nReading DS: 0x");
+    utils.printHex32(current_tss.ds);
+    screen.write("\n");
 
     screen.write("\n=== TSS Verification ===\n");
 

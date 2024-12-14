@@ -96,7 +96,7 @@ fn initializeKernel() void {
 
     // GDT and TSS
     screen.write("- Global Descriptor Table... ");
-    gdt.initGDT(boot_info.?);
+    gdt.initGDT();
     screen.write("OK\n");
 
     screen.write("- Task State Segment... ");

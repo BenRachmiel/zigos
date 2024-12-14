@@ -70,7 +70,6 @@ pub fn initializeMemory(mbi: *multiboot.MultibootInfo) !void {
     screen.write("\nInitializing Memory Management\n");
     screen.write("------------------------------\n");
 
-    // Validation checks...
     if (!mbi.hasMemoryMap()) {
         screen.write("Memory map flag check failed:\n");
         screen.write("  Required flag: 0x40 (bit 6)\n");
@@ -87,7 +86,6 @@ pub fn initializeMemory(mbi: *multiboot.MultibootInfo) !void {
         return error.InvalidMemoryMap;
     }
 
-    // Debug info
     screen.write("Multiboot Flags: ");
     utils.printHex0x(mbi.flags);
     screen.write("\nMemory Map Address: ");
@@ -113,7 +111,6 @@ pub fn initializeMemory(mbi: *multiboot.MultibootInfo) !void {
         utils.printHex0x(current_addr);
         screen.write("\n");
 
-        // Read size field (4 bytes before entry)
         screen.write("1. Reading size field...\n");
         const size = @as(*const u32, @ptrFromInt(current_addr)).*;
         screen.write("   Size: ");
@@ -125,7 +122,6 @@ pub fn initializeMemory(mbi: *multiboot.MultibootInfo) !void {
             break;
         }
 
-        // Get pointer to actual entry (after size field)
         screen.write("2. Getting entry pointer...\n");
         const entry = @as(*const MemoryMapEntry, @ptrFromInt(current_addr + 4));
         screen.write("   Entry at: ");
@@ -135,7 +131,6 @@ pub fn initializeMemory(mbi: *multiboot.MultibootInfo) !void {
         screen.write("3. Calling debugPrint...\n");
         entry.debugPrint();
 
-        // Update memory stats
         const len = entry.length;
         memory_stats.total_memory += len;
         switch (entry.type) {

@@ -1,7 +1,7 @@
 const std = @import("std");
 const vga = @import("drivers/vga.zig");
 const utils = @import("utils.zig");
-const multiboot = @import("multiboot.zig");
+const memory = @import("memory.zig");
 
 pub const GDT_ENTRIES = 6; // 5 original entries + TSS
 const TSS_INDEX = 5;
@@ -191,14 +191,14 @@ pub fn makeSegmentGranularity() GranularityFlags {
     };
 }
 
-pub fn initGDT(boot_info: *multiboot.MultibootInfo) void {
+pub fn initGDT() void {
     const screen = vga.getScreen();
     screen.write("[GDT] Initializing Global Descriptor Table...\n");
 
-    const memory_size = boot_info.getMemorySize();
-    const phys_limit: u32 = @truncate(memory_size - 1);
+    const memory_stats = memory.getMemoryStats();
+    const phys_limit: u32 = @truncate(memory_stats.total_memory - 1);
     screen.write("Physical Memory: ");
-    utils.printDec(@truncate(memory_size / 1024 / 1024));
+    utils.printDec(@truncate(memory_stats.total_memory / 1024 / 1024));
     screen.write(" MB\n");
 
     gdt[0] = GdtEntry.init(0, 0, makeNullFlags(), makeNullGranularity());
