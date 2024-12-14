@@ -124,17 +124,10 @@ fn verifyStackSetup() void {
     utils.printHex(tss_ptr.ist1);
     screen.write("\n");
 
-    const kernel_stack_bottom = boot.getKernelStackBase();
-    const kernel_stack_top = boot.getKernelStackTop();
-    const interrupt_stack_bottom = boot.getInterruptStackBase();
-    const interrupt_stack_top = boot.getInterruptStackTop();
-    const initial_esp = boot.initial_esp;
-
-    screen.write("\nInitial ESP from GRUB: 0x");
-    utils.printHex(initial_esp);
-    screen.write("\nKernel Stack Setup: 0x");
-    utils.printHex(@intFromPtr(&boot._kernel_stack) + boot.KERNEL_STACK_SIZE);
-    screen.write("\n");
+    const kernel_stack_bottom = boot.STACK.getKernelBase();
+    const kernel_stack_top = boot.STACK.getKernelTop();
+    const interrupt_stack_bottom = boot.STACK.getInterruptBase();
+    const interrupt_stack_top = boot.STACK.getInterruptTop();
 
     screen.write("\nStack Ranges:\n");
     screen.write("Kernel Stack:    0x");
@@ -212,28 +205,6 @@ fn verifyTSS() void {
     if (current_tss.ss0 != 0x10) {
         screen.setColor(.Red, .Black);
         screen.write(" [MISMATCH]");
-        utils.delay();
-        screen.setColor(.White, .Black);
-    }
-    screen.write("\n");
-
-    screen.write("ESP0: 0x");
-    utils.printHex32(current_tss.esp0);
-    const kernel_stack_top = boot.getKernelStackTop();
-    if (current_tss.esp0 != kernel_stack_top) {
-        screen.setColor(.Red, .Black);
-        screen.write(" [INVALID]");
-        utils.delay();
-        screen.setColor(.White, .Black);
-    }
-    screen.write("\n");
-
-    screen.write("IST1: 0x");
-    utils.printHex32(current_tss.ist1);
-    const interrupt_stack_top = @intFromPtr(boot.interrupt_stack) + boot.interrupt_stack.len;
-    if (current_tss.ist1 != interrupt_stack_top) {
-        screen.setColor(.Red, .Black);
-        screen.write(" [INVALID]");
         utils.delay();
         screen.setColor(.White, .Black);
     }

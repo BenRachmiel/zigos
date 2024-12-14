@@ -10,48 +10,65 @@ const multiboot = @import("multiboot.zig");
 const utils = @import("utils.zig");
 const memory = @import("memory.zig");
 
-const MULTIBOOT_MAGIC = 0x1BADB002;
-const MULTIBOOT_FLAGS = (multiboot.ALIGN | multiboot.MEMINFO | multiboot.MMAP_INFO);
-const MULTIBOOT_CHECKSUM = 0 -% (MULTIBOOT_MAGIC + MULTIBOOT_FLAGS);
+// ============= Multiboot Configuration =============
+const MULTIBOOT_HEADER = struct {
+    const MAGIC = 0x1BADB002;
+    const FLAGS = (multiboot.ALIGN | multiboot.MEMINFO | multiboot.MMAP_INFO);
+    const CHECKSUM = 0 -% (MAGIC + FLAGS);
 
-export var multiboot_header align(4) linksection(".multiboot") = [_]u32{
-    MULTIBOOT_MAGIC,
-    MULTIBOOT_FLAGS,
-    MULTIBOOT_CHECKSUM,
+    pub export var header align(4) linksection(".multiboot") = [_]u32{
+        MAGIC, FLAGS, CHECKSUM,
+    };
 };
 
-pub var boot_info: ?*multiboot.MultibootInfo = null;
+// ============= Stack Configuration =============
+pub const STACK = struct {
+    pub const KERNEL_SIZE = 64 * 1024; // 64KB kernel stack
+    pub const INTERRUPT_SIZE = 32 * 1024; // 32KB interrupt stack
 
+    pub export var kernel: [KERNEL_SIZE]u8 align(4096) linksection(".bss.kernel_stack") = undefined;
+    pub export var interrupt: [INTERRUPT_SIZE]u8 align(4096) linksection(".bss.interrupt_stack") = undefined;
+
+    extern const __kernel_stack_end: u8;
+
+    pub fn getKernelBase() usize {
+        return @intFromPtr(&kernel);
+    }
+
+    pub fn getKernelTop() usize {
+        return getKernelBase() + KERNEL_SIZE;
+    }
+
+    pub fn getInterruptBase() usize {
+        return @intFromPtr(&interrupt);
+    }
+
+    pub fn getInterruptTop() usize {
+        return getInterruptBase() + INTERRUPT_SIZE;
+    }
+
+    pub fn debugPrint() void {
+        const screen = vga.getScreen();
+        screen.write("\nStack Configuration:\n");
+        screen.write("-----------------\n");
+        screen.write("Kernel stack:    0x");
+        utils.printHex32(getKernelBase());
+        screen.write(" - 0x");
+        utils.printHex32(getKernelTop());
+        screen.write("\nInterrupt stack: 0x");
+        utils.printHex32(getInterruptBase());
+        screen.write(" - 0x");
+        utils.printHex32(getInterruptTop());
+        screen.write("\n");
+    }
+};
+
+// ============= Boot State =============
+pub var boot_info: ?*multiboot.MultibootInfo = null;
 export var debug_eax: u32 = undefined;
 export var debug_ebx: u32 = undefined;
 
-pub const KERNEL_STACK_SIZE = 64 * 1024; // 64KB kernel stack
-pub const INTERRUPT_STACK_SIZE = 32 * 1024; // 32KB interrupt stack
-
-pub export var _kernel_stack: [KERNEL_STACK_SIZE]u8 align(4096) linksection(".bss.kernel_stack") = undefined;
-pub export var _interrupt_stack: [INTERRUPT_STACK_SIZE]u8 align(4096) linksection(".bss.interrupt_stack") = undefined;
-
-pub fn getKernelStackBase() usize {
-    return @intFromPtr(&_kernel_stack);
-}
-
-pub fn getKernelStackTop() usize {
-    return getKernelStackBase() + KERNEL_STACK_SIZE;
-}
-
-pub fn getInterruptStackBase() usize {
-    return @intFromPtr(&_interrupt_stack);
-}
-
-pub fn getInterruptStackTop() usize {
-    return getInterruptStackBase() + INTERRUPT_STACK_SIZE;
-}
-
-pub const kernel_stack = &_kernel_stack;
-pub const interrupt_stack = &_interrupt_stack;
-
-extern const __kernel_stack_end: u8;
-
+// ============= Entry Point =============
 export fn _start() callconv(.Naked) noreturn {
     asm volatile (
         \\.global _start
@@ -62,13 +79,12 @@ export fn _start() callconv(.Naked) noreturn {
         ::: "memory");
 }
 
-pub export var initial_esp: u32 = undefined;
-
+// ============= Initialization Functions =============
 fn initializeKernel() void {
     const screen = vga.getScreen();
-
     screen.write("\nInitializing kernel components...\n");
 
+    // Memory Management
     screen.write("Initializing memory management...\n");
     memory.initializeMemory(boot_info.?) catch |err| {
         screen.setColor(.Red, .Black);
@@ -78,30 +94,17 @@ fn initializeKernel() void {
         hang();
     };
 
+    // GDT and TSS
     screen.write("- Global Descriptor Table... ");
     gdt.initGDT(boot_info.?);
     screen.write("OK\n");
 
     screen.write("- Task State Segment... ");
-    const k_stack_base = getKernelStackBase();
-    const k_stack_top = getKernelStackTop();
-    const i_stack_base = getInterruptStackBase();
-    const i_stack_top = getInterruptStackTop();
-
-    screen.write("\nDebug Stack Values:\n");
-    screen.write("Kernel stack base: 0x");
-    utils.printHex32(k_stack_base);
-    screen.write("\nKernel stack top:  0x");
-    utils.printHex32(k_stack_top);
-    screen.write("\nInt stack base:    0x");
-    utils.printHex32(i_stack_base);
-    screen.write("\nInt stack top:     0x");
-    utils.printHex32(i_stack_top);
-    screen.write("\n");
-
-    tss.initTSS(k_stack_top, i_stack_top);
+    STACK.debugPrint();
+    tss.initTSS(STACK.getKernelTop(), STACK.getInterruptTop());
     screen.write("OK\n");
 
+    // Interrupts and Devices
     screen.write("- Interrupt Descriptor Table... ");
     interrupts.initInterrupts();
     screen.write("OK\n");
@@ -119,28 +122,10 @@ fn initializeKernel() void {
     asm volatile ("sti");
     screen.write("OK\n");
 
+    // Command System
     screen.write("- Command System... ");
     commands.initCommands();
     screen.write("OK\n");
-}
-
-fn waitForShell() void {
-    const screen = vga.getScreen();
-    screen.write("\nPress left-shift to continue to shell...\n");
-
-    while (true) {
-        if (keyboard.getNextKey()) |k| {
-            if (k == .Special and k.Special == .LeftShift) {
-                break;
-            }
-        }
-        asm volatile ("hlt");
-    }
-
-    screen.clear();
-    screen.showBanner();
-    screen.setColor(.Green, .Black);
-    screen.write("Boot complete! Start typing:\n> ");
 }
 
 fn verifyMultiboot(eax: u32, ebx: u32) !void {
@@ -161,24 +146,43 @@ fn verifyMultiboot(eax: u32, ebx: u32) !void {
     }
 
     boot_info = info;
-
     screen.setColor(.Green, .Black);
     screen.write("Multiboot information validated successfully!\n");
     screen.setColor(.White, .Black);
     info.debugPrint();
 }
 
+fn waitForShell() void {
+    const screen = vga.getScreen();
+    screen.write("\nPress left-shift to continue to shell...\n");
+
+    while (true) {
+        if (keyboard.getNextKey()) |k| {
+            if (k == .Special and k.Special == .LeftShift) break;
+        }
+        asm volatile ("hlt");
+    }
+
+    screen.clear();
+    screen.showBanner();
+    screen.setColor(.Green, .Black);
+    screen.write("Boot complete! Start typing:\n> ");
+}
+
+// ============= Main Entry =============
 export fn kmain(eax: u32, ebx: u32) noreturn {
     vga.initScreen();
     const screen = vga.getScreen();
 
     screen.write("Booting ZigOS...\n\n");
 
+    // Debug information
     utils.dumpRegisters(debug_eax, debug_ebx);
-    utils.debugPrint("\nMultiboot Header Location: ", @intFromPtr(&multiboot_header));
-    utils.dumpBytes("Header bytes: ", @ptrCast(&multiboot_header), 12);
+    utils.debugPrint("\nMultiboot Header Location: ", @intFromPtr(&MULTIBOOT_HEADER.header));
+    utils.dumpBytes("Header bytes: ", @ptrCast(&MULTIBOOT_HEADER.header), 12);
     utils.dumpBytes("\nFirst bytes at 0x100000: ", @ptrFromInt(0x100000), 16);
 
+    // Boot sequence
     verifyMultiboot(eax, ebx) catch |err| {
         screen.setColor(.Red, .Black);
         screen.write("\nFatal Error: Unable to verify multiboot information\n");
