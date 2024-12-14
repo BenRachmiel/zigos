@@ -1,6 +1,7 @@
 const std = @import("std");
 const vga = @import("drivers/vga.zig");
 const utils = @import("utils.zig");
+const multiboot = @import("multiboot.zig");
 
 pub const GDT_ENTRIES = 6; // 5 original entries + TSS
 const TSS_INDEX = 5;
@@ -190,31 +191,22 @@ pub fn makeSegmentGranularity() GranularityFlags {
     };
 }
 
-pub fn initGDT() void {
+pub fn initGDT(boot_info: *multiboot.MultibootInfo) void {
     const screen = vga.getScreen();
     screen.write("[GDT] Initializing Global Descriptor Table...\n");
 
-    // Null descriptor
-    screen.write("[GDT] Setting null descriptor\n");
+    const memory_size = boot_info.getMemorySize();
+    const phys_limit: u32 = @truncate(memory_size - 1);
+    screen.write("Physical Memory: ");
+    utils.printDec(@truncate(memory_size / 1024 / 1024));
+    screen.write(" MB\n");
+
     gdt[0] = GdtEntry.init(0, 0, makeNullFlags(), makeNullGranularity());
+    gdt[1] = GdtEntry.init(0, phys_limit, makeKernelCodeFlags(), makeSegmentGranularity());
+    gdt[2] = GdtEntry.init(0, phys_limit, makeKernelDataFlags(), makeSegmentGranularity());
+    gdt[3] = GdtEntry.init(0, phys_limit, makeUserCodeFlags(), makeSegmentGranularity());
+    gdt[4] = GdtEntry.init(0, phys_limit, makeUserDataFlags(), makeSegmentGranularity());
 
-    // Kernel code segment
-    screen.write("[GDT] Setting kernel code segment\n");
-    gdt[1] = GdtEntry.init(0, 0xFFFFFFFF, makeKernelCodeFlags(), makeSegmentGranularity());
-
-    // Kernel data segment
-    screen.write("[GDT] Setting kernel data segment\n");
-    gdt[2] = GdtEntry.init(0, 0xFFFFFFFF, makeKernelDataFlags(), makeSegmentGranularity());
-
-    // User code segment
-    screen.write("[GDT] Setting user code segment\n");
-    gdt[3] = GdtEntry.init(0, 0xFFFFFFFF, makeUserCodeFlags(), makeSegmentGranularity());
-
-    // User data segment
-    screen.write("[GDT] Setting user data segment\n");
-    gdt[4] = GdtEntry.init(0, 0xFFFFFFFF, makeUserDataFlags(), makeSegmentGranularity());
-
-    // TSS entry
     screen.write("[GDT] Setting up TSS entry...\n");
     const tss = @import("tss.zig").getTSS();
     const tss_base = @intFromPtr(tss);

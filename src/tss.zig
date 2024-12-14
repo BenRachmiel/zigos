@@ -3,7 +3,7 @@ const utils = @import("utils.zig");
 
 pub const TSS = packed struct {
     prev_tss: u32 = 0,
-    esp0: u32 = 0, // Kernel stack
+    esp0: u32 = 0,
     ss0: u32 = 0,
     esp1: u32 = 0,
     ss1: u32 = 0,
@@ -29,8 +29,7 @@ pub const TSS = packed struct {
     ldt: u32 = 0,
     trap: u16 = 0,
     iomap_base: u16 = @sizeOf(TSS),
-    // Add IST support
-    ist1: u32 = 0, // Interrupt Stack Table 1
+    ist1: u32 = 0,
     ist2: u32 = 0,
     ist3: u32 = 0,
     ist4: u32 = 0,
@@ -49,14 +48,11 @@ pub fn initTSS(kernel_stack: u32, interrupt_stack: u32) void {
     const screen = vga.getScreen();
     screen.write("[TSS] Initializing Task State Segment...\n");
 
-    // Set up kernel stack
-    MAIN_TSS.ss0 = 0x10; // Kernel data segment
+    MAIN_TSS.ss0 = 0x10;
     MAIN_TSS.esp0 = kernel_stack;
 
-    // Set up interrupt stack
     MAIN_TSS.ist1 = interrupt_stack;
 
-    // Initialize segment registers with null selector
     MAIN_TSS.cs = 0;
     MAIN_TSS.ss = 0;
     MAIN_TSS.ds = 0;
@@ -72,4 +68,10 @@ pub fn initTSS(kernel_stack: u32, interrupt_stack: u32) void {
     screen.write("\n");
 
     screen.write("[TSS] Configuration complete.\n");
+    screen.write("Verifying TSS values:\n");
+    screen.write("ESP0: 0x");
+    utils.printHex32(MAIN_TSS.esp0);
+    screen.write("\nIST1: 0x");
+    utils.printHex32(MAIN_TSS.ist1);
+    screen.write("\n");
 }

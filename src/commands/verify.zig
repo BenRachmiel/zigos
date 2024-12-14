@@ -88,10 +88,19 @@ fn verifyNullDescriptor() void {
 }
 
 fn verifyCodeAndDataSegments() void {
-    verifySegmentDescriptor(gdt.gdt[1], 1, 0, 0xFFFFFFFF, gdt.makeKernelCodeFlags());
-    verifySegmentDescriptor(gdt.gdt[2], 2, 0, 0xFFFFFFFF, gdt.makeKernelDataFlags());
-    verifySegmentDescriptor(gdt.gdt[3], 3, 0, 0xFFFFFFFF, gdt.makeUserCodeFlags());
-    verifySegmentDescriptor(gdt.gdt[4], 4, 0, 0xFFFFFFFF, gdt.makeUserDataFlags());
+    const screen = vga.getScreen();
+
+    const memory_size = boot.boot_info.?.getMemorySize();
+    const phys_limit: u32 = @truncate(memory_size - 1);
+
+    screen.write("\nPhysical Memory Limit: 0x");
+    utils.printHex32(phys_limit);
+    screen.write("\n");
+
+    verifySegmentDescriptor(gdt.gdt[1], 1, 0, phys_limit, gdt.makeKernelCodeFlags());
+    verifySegmentDescriptor(gdt.gdt[2], 2, 0, phys_limit, gdt.makeKernelDataFlags());
+    verifySegmentDescriptor(gdt.gdt[3], 3, 0, phys_limit, gdt.makeUserCodeFlags());
+    verifySegmentDescriptor(gdt.gdt[4], 4, 0, phys_limit, gdt.makeUserDataFlags());
 }
 
 fn verifyStackSetup() void {
@@ -111,15 +120,21 @@ fn verifyStackSetup() void {
     screen.write("TSS ESP0: 0x");
     utils.printHex(tss_ptr.esp0);
     screen.write("\n");
-
     screen.write("TSS IST1: 0x");
     utils.printHex(tss_ptr.ist1);
     screen.write("\n");
 
-    const kernel_stack_bottom = @intFromPtr(boot.kernel_stack);
-    const kernel_stack_top = kernel_stack_bottom + boot.kernel_stack.len;
-    const interrupt_stack_bottom = @intFromPtr(boot.interrupt_stack);
-    const interrupt_stack_top = interrupt_stack_bottom + boot.interrupt_stack.len;
+    const kernel_stack_bottom = boot.getKernelStackBase();
+    const kernel_stack_top = boot.getKernelStackTop();
+    const interrupt_stack_bottom = boot.getInterruptStackBase();
+    const interrupt_stack_top = boot.getInterruptStackTop();
+    const initial_esp = boot.initial_esp;
+
+    screen.write("\nInitial ESP from GRUB: 0x");
+    utils.printHex(initial_esp);
+    screen.write("\nKernel Stack Setup: 0x");
+    utils.printHex(@intFromPtr(&boot._kernel_stack) + boot.KERNEL_STACK_SIZE);
+    screen.write("\n");
 
     screen.write("\nStack Ranges:\n");
     screen.write("Kernel Stack:    0x");
@@ -138,6 +153,13 @@ fn verifyStackSetup() void {
     if (current_esp < kernel_stack_bottom or current_esp > kernel_stack_top) {
         screen.setColor(.Red, .Black);
         screen.write("ERROR: Current stack pointer outside kernel stack range!\n");
+        screen.write("ESP=0x");
+        utils.printHex(current_esp);
+        screen.write(" not in 0x");
+        utils.printHex(kernel_stack_bottom);
+        screen.write("-0x");
+        utils.printHex(kernel_stack_top);
+        screen.write("\n");
         utils.delay();
         screen.setColor(.White, .Black);
     } else {
@@ -197,7 +219,7 @@ fn verifyTSS() void {
 
     screen.write("ESP0: 0x");
     utils.printHex32(current_tss.esp0);
-    const kernel_stack_top = @intFromPtr(boot.kernel_stack) + boot.kernel_stack.len;
+    const kernel_stack_top = boot.getKernelStackTop();
     if (current_tss.esp0 != kernel_stack_top) {
         screen.setColor(.Red, .Black);
         screen.write(" [INVALID]");

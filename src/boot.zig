@@ -20,41 +20,83 @@ export var multiboot_header align(4) linksection(".multiboot") = [_]u32{
     MULTIBOOT_CHECKSUM,
 };
 
-var _kernel_stack: [16 * 1024]u8 align(16) linksection(".bss") = undefined;
-var _interrupt_stack: [8 * 1024]u8 align(16) linksection(".bss") = undefined;
-pub const kernel_stack = &_kernel_stack;
-pub const interrupt_stack = &_interrupt_stack;
-
-var boot_info: ?*multiboot.MultibootInfo = null;
+pub var boot_info: ?*multiboot.MultibootInfo = null;
 
 export var debug_eax: u32 = undefined;
 export var debug_ebx: u32 = undefined;
 
+pub const KERNEL_STACK_SIZE = 64 * 1024; // 64KB kernel stack
+pub const INTERRUPT_STACK_SIZE = 32 * 1024; // 32KB interrupt stack
+
+pub export var _kernel_stack: [KERNEL_STACK_SIZE]u8 align(4096) linksection(".bss.kernel_stack") = undefined;
+pub export var _interrupt_stack: [INTERRUPT_STACK_SIZE]u8 align(4096) linksection(".bss.interrupt_stack") = undefined;
+
+pub fn getKernelStackBase() usize {
+    return @intFromPtr(&_kernel_stack);
+}
+
+pub fn getKernelStackTop() usize {
+    return getKernelStackBase() + KERNEL_STACK_SIZE;
+}
+
+pub fn getInterruptStackBase() usize {
+    return @intFromPtr(&_interrupt_stack);
+}
+
+pub fn getInterruptStackTop() usize {
+    return getInterruptStackBase() + INTERRUPT_STACK_SIZE;
+}
+
+pub const kernel_stack = &_kernel_stack;
+pub const interrupt_stack = &_interrupt_stack;
+
 export fn _start() callconv(.Naked) noreturn {
     asm volatile (
-        \\mov %%eax, (debug_eax)
-        \\mov %%ebx, (debug_ebx)
-        \\mov %[stack_ptr], %%esp
+        \\mov $0x00148000, %%esp
         \\push %%ebx
         \\push %%eax
         \\call kmain
-        :
-        : [stack_ptr] "r" (@intFromPtr(&kernel_stack) + kernel_stack.len),
-        : "memory"
-    );
+        ::: "memory");
 }
+
+pub export var initial_esp: u32 = undefined;
 
 fn initializeKernel() void {
     const screen = vga.getScreen();
 
     screen.write("\nInitializing kernel components...\n");
 
+    screen.write("Initializing memory management...\n");
+    memory.initializeMemory(boot_info.?) catch |err| {
+        screen.setColor(.Red, .Black);
+        screen.write("Error: Memory initialization failed - ");
+        screen.write(@errorName(err));
+        screen.write("\n");
+        hang();
+    };
+
     screen.write("- Global Descriptor Table... ");
-    gdt.initGDT();
+    gdt.initGDT(boot_info.?);
     screen.write("OK\n");
 
     screen.write("- Task State Segment... ");
-    tss.initTSS(@intFromPtr(&kernel_stack) + kernel_stack.len, @intFromPtr(&interrupt_stack) + interrupt_stack.len);
+    const k_stack_base = getKernelStackBase();
+    const k_stack_top = getKernelStackTop();
+    const i_stack_base = getInterruptStackBase();
+    const i_stack_top = getInterruptStackTop();
+
+    screen.write("\nDebug Stack Values:\n");
+    screen.write("Kernel stack base: 0x");
+    utils.printHex32(k_stack_base);
+    screen.write("\nKernel stack top:  0x");
+    utils.printHex32(k_stack_top);
+    screen.write("\nInt stack base:    0x");
+    utils.printHex32(i_stack_base);
+    screen.write("\nInt stack top:     0x");
+    utils.printHex32(i_stack_top);
+    screen.write("\n");
+
+    tss.initTSS(k_stack_top, i_stack_top);
     screen.write("OK\n");
 
     screen.write("- Interrupt Descriptor Table... ");
@@ -73,15 +115,6 @@ fn initializeKernel() void {
     screen.write("- Enabling interrupts... ");
     asm volatile ("sti");
     screen.write("OK\n");
-
-    screen.write("Initializing memory management...\n");
-    memory.initializeMemory(boot_info.?) catch |err| {
-        screen.setColor(.Red, .Black);
-        screen.write("Error: Memory initialization failed - ");
-        screen.write(@errorName(err));
-        screen.write("\n");
-        hang();
-    };
 
     screen.write("- Command System... ");
     commands.initCommands();

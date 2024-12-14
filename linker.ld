@@ -26,13 +26,29 @@ SECTIONS {
     } :data
 
     .bss ALIGN(4K) (NOLOAD) : {
-        *(COMMON)
-        *(.bss)
+        __bss_start = .;
+        
+        . = ALIGN(16);
+        __kernel_stack_start = .;
+        *(.bss.kernel_stack)
         . = ALIGN(4K);
+        __kernel_stack_end = .;
+        
+        . += 4K;
+        
+        . = ALIGN(16);
+        __interrupt_stack_start = .;
+        *(.bss.interrupt_stack)
+        . = ALIGN(4K);
+        __interrupt_stack_end = .;
+        
+        *(.bss .bss.*)
+        . = ALIGN(4K);
+        __bss_end = .;
     } :data
 }
 
 PHDRS {
-    text PT_LOAD FLAGS(5); /* Read + Execute */
-    data PT_LOAD FLAGS(6); /* Read + Write */
+    text PT_LOAD FLAGS(5);
+    data PT_LOAD FLAGS(6);
 }
