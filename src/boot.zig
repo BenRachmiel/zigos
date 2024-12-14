@@ -13,7 +13,7 @@ const memory = @import("memory.zig");
 // ============= Multiboot Configuration =============
 const MULTIBOOT_HEADER = struct {
     const MAGIC = 0x1BADB002;
-    const FLAGS = (multiboot.ALIGN | multiboot.MEMINFO | multiboot.MMAP_INFO);
+    const FLAGS = (multiboot.ALIGN | multiboot.MEMINFO);
     const CHECKSUM = 0 -% (MAGIC + FLAGS);
 
     pub export var header align(4) linksection(".multiboot") = [_]u32{

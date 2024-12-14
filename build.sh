@@ -1,6 +1,5 @@
 #!/usr/bin/env bash
 set -e
-
 rm -rf zig-out zig-cache isofiles os.iso
 
 # Set up the grub-mkrescue alias for macOS
@@ -11,6 +10,7 @@ fi
 # Build the kernel
 zig build || exit 1
 
+# Create ISO directory structure
 mkdir -p isofiles/boot/grub
 
 # Create GRUB config
@@ -18,6 +18,9 @@ echo 'menuentry "ZigOS" {
     multiboot /boot/kernel.elf
     boot
 }' > isofiles/boot/grub/grub.cfg
+
+# Copy kernel to ISO directory
+cp zig-out/bin/kernel.elf isofiles/boot/
 
 # Create the ISO
 if [[ "$OSTYPE" == "darwin"* ]]; then
