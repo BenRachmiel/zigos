@@ -198,22 +198,13 @@ pub fn initGDT() void {
     const screen = vga.getScreen();
     screen.write("[GDT] Initializing Global Descriptor Table...\n");
 
-    const memory_stats = memory.getMemoryStats();
-    // Each unit in the GDT limit field represents a 4KB block when G=1
-    const total_memory_bytes = memory_stats.total_memory;
-    const memory_blocks_4k = total_memory_bytes / 4096;
-    const segment_limit_in_4k_blocks: u32 = @truncate(memory_blocks_4k - 1);
+    const max_segment_limit: u32 = 0xFFFFF; // This will become 4GB-1 after granularity
 
-    screen.write("Physical Memory: ");
-    utils.printDec(@truncate(total_memory_bytes / 1024 / 1024));
-    screen.write(" MB\n");
-
-    // Each GDT entry's limit field will be interpreted as count of 4KB blocks
     gdt[0] = GdtEntry.init(0, 0, makeNullFlags(), makeNullGranularity());
-    gdt[1] = GdtEntry.init(0, segment_limit_in_4k_blocks, makeKernelCodeFlags(), makeSegmentGranularity());
-    gdt[2] = GdtEntry.init(0, segment_limit_in_4k_blocks, makeKernelDataFlags(), makeSegmentGranularity());
-    gdt[3] = GdtEntry.init(0, segment_limit_in_4k_blocks, makeUserCodeFlags(), makeSegmentGranularity());
-    gdt[4] = GdtEntry.init(0, segment_limit_in_4k_blocks, makeUserDataFlags(), makeSegmentGranularity());
+    gdt[1] = GdtEntry.init(0, max_segment_limit, makeKernelCodeFlags(), makeSegmentGranularity());
+    gdt[2] = GdtEntry.init(0, max_segment_limit, makeKernelDataFlags(), makeSegmentGranularity());
+    gdt[3] = GdtEntry.init(0, max_segment_limit, makeUserCodeFlags(), makeSegmentGranularity());
+    gdt[4] = GdtEntry.init(0, max_segment_limit, makeUserDataFlags(), makeSegmentGranularity());
 
     // TSS doesn't use 4KB blocks, so its limit is a normal byte count
     screen.write("[GDT] Setting up TSS entry...\n");
@@ -227,12 +218,7 @@ pub fn initGDT() void {
     utils.printHex32(tss_size_bytes);
     screen.write("\n");
 
-    if (TSS_INDEX >= GDT_ENTRIES) {
-        screen.write("ERROR: TSS_INDEX out of bounds!\n");
-        return;
-    }
-
-    gdt[TSS_INDEX] = GdtEntry.initSystem(tss_base_addr, tss_size_bytes, makeTSSFlags(), GranularityFlags{
+    gdt[TSS_INDEX] = GdtEntry.initSystem(tss_base_addr, tss_size_bytes - 1, makeTSSFlags(), GranularityFlags{
         .size = false,
         .granularity = false,
     });

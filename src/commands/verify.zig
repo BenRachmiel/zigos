@@ -18,7 +18,17 @@ fn calculateLimit(entry: gdt.GdtEntry) u32 {
 
     const g_bit = (entry.granularity & 0x80) != 0;
     const raw_limit = (@as(u32, entry.granularity & 0x0F) << 16) | entry.limit_low;
-    return if (g_bit) (raw_limit << 12) | 0xFFF else raw_limit;
+    const final_limit = if (g_bit) (raw_limit << 12) | 0xFFF else raw_limit;
+
+    screen.write("  G bit: ");
+    screen.write(if (g_bit) "1" else "0");
+    screen.write("\n  Raw limit: 0x");
+    utils.printHex32(raw_limit);
+    screen.write("\n  Final limit: 0x");
+    utils.printHex32(final_limit);
+    screen.write("\n");
+
+    return final_limit;
 }
 
 fn verifySegmentDescriptor(entry: gdt.GdtEntry, index: usize, expected_base: u32, expected_limit: u32, expected_access: gdt.AccessFlags) void {
@@ -74,6 +84,10 @@ fn verifySegmentDescriptor(entry: gdt.GdtEntry, index: usize, expected_base: u32
         screen.setColor(.Red, .Black);
         screen.write(" [MISMATCH]");
         utils.delay();
+        utils.delay();
+        utils.delay();
+        utils.delay();
+        utils.delay();
         screen.setColor(.White, .Black);
     }
     screen.write("\n");
@@ -100,20 +114,28 @@ fn verifyNullDescriptor() void {
 
 fn verifyCodeAndDataSegments() void {
     const screen = vga.getScreen();
-    const memory_stats = memory.getMemoryStats();
-    const phys_limit: u32 = @truncate(memory_stats.total_memory - 1);
 
-    screen.write("\nPhysical Memory: ");
-    utils.printDec(@truncate(memory_stats.total_memory / 1024 / 1024));
-    screen.write(" MB (limit: 0x");
-    utils.printHex32(phys_limit);
-    screen.write(")\n");
-    utils.delay();
+    // For segments with G=1, we expect a limit of 0xFFFFF which gives us 4GB
+    const expected_limit: u32 = 0xFFFFF;
 
-    verifySegmentDescriptor(gdt.gdt[1], 1, 0, phys_limit, gdt.makeKernelCodeFlags());
-    verifySegmentDescriptor(gdt.gdt[2], 2, 0, phys_limit, gdt.makeKernelDataFlags());
-    verifySegmentDescriptor(gdt.gdt[3], 3, 0, phys_limit, gdt.makeUserCodeFlags());
-    verifySegmentDescriptor(gdt.gdt[4], 4, 0, phys_limit, gdt.makeUserDataFlags());
+    screen.write("\nVerifying Code and Data Segments\n");
+    screen.write("Expected virtual address space: 4GB\n");
+    screen.write("Segment limit (raw): 0x");
+    utils.printHex32(expected_limit);
+    screen.write("\n");
+
+    // After G=1 scaling, this becomes 0xFFFFFFFF (4GB-1)
+    const effective_limit = (expected_limit << 12) | 0xFFF;
+    screen.write("Effective limit: 0x");
+    utils.printHex32(effective_limit);
+    screen.write(" (");
+    utils.printDec(effective_limit / 1024 / 1024 + 1);
+    screen.write(" MB)\n");
+
+    verifySegmentDescriptor(gdt.gdt[1], 1, 0, effective_limit, gdt.makeKernelCodeFlags());
+    verifySegmentDescriptor(gdt.gdt[2], 2, 0, effective_limit, gdt.makeKernelDataFlags());
+    verifySegmentDescriptor(gdt.gdt[3], 3, 0, effective_limit, gdt.makeUserCodeFlags());
+    verifySegmentDescriptor(gdt.gdt[4], 4, 0, effective_limit, gdt.makeUserDataFlags());
 }
 
 fn verifyStackSetup() void {
