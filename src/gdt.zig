@@ -48,27 +48,30 @@ pub const AccessFlags = packed struct {
 };
 
 pub const GranularityFlags = packed struct {
-    segment_length: u2 = 0,
     reserved: u1 = 0,
-    big: bool = true, // 32-bit protected mode
-    granularity: bool = true, // multiply limit by 4K
+    long_mode: bool = false, // L bit
+    size: bool = true, // DB bit (rename from 'big' for clarity)
+    granularity: bool = true, // G bit
 
     pub fn toU8(self: GranularityFlags) u8 {
-        return (@as(u8, @intFromBool(self.granularity)) << 7) |
-            (@as(u8, @intFromBool(self.big)) << 6) |
-            (@as(u8, self.reserved) << 5) |
-            (@as(u8, self.segment_length) << 3);
+        return (@as(u8, @intFromBool(self.granularity)) << 7) | // G bit at bit 7 (bit 3 of flags nibble)
+            (@as(u8, @intFromBool(self.size)) << 6) | // DB bit at bit 6 (bit 2 of flags nibble)
+            (@as(u8, @intFromBool(self.long_mode)) << 5) | // L bit at bit 5 (bit 1 of flags nibble)
+            (@as(u8, self.reserved) << 4); // Reserved at bit 4 (bit 0 of flags nibble)
     }
 };
 
 pub const SystemFlags = packed struct {
-    type: u4 = 9, // 9 for TSS
-    reserved: u1 = 0,
-    privilege_level: u2 = 0,
-    present: bool = true,
+    type: u4 = 9, // Bits 0-3: Type field (0x9 for 32-bit TSS)
+    descriptor_type: bool = false, // Bit 4: S bit (must be 0 for system segments)
+    privilege_level: u2 = 0, // Bits 5-6: DPL
+    present: bool = true, // Bit 7: P bit
 
     pub fn toU8(self: SystemFlags) u8 {
-        return @as(u8, @bitCast(self));
+        return (@as(u8, @intFromBool(self.present)) << 7) |
+            (@as(u8, self.privilege_level) << 5) |
+            (@as(u8, @intFromBool(self.descriptor_type)) << 4) |
+            @as(u8, self.type);
     }
 };
 
@@ -179,14 +182,14 @@ pub fn makeTSSFlags() SystemFlags {
 
 pub fn makeNullGranularity() GranularityFlags {
     return GranularityFlags{
-        .big = false,
+        .size = false,
         .granularity = false,
     };
 }
 
 pub fn makeSegmentGranularity() GranularityFlags {
     return GranularityFlags{
-        .big = true,
+        .size = true,
         .granularity = true,
     };
 }
@@ -224,7 +227,7 @@ pub fn initGDT() void {
     }
 
     gdt[TSS_INDEX] = GdtEntry.initSystem(tss_base, tss_limit, makeTSSFlags(), GranularityFlags{
-        .big = false,
+        .size = false,
         .granularity = false,
     });
 
