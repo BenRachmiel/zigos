@@ -199,26 +199,32 @@ pub fn initGDT() void {
     screen.write("[GDT] Initializing Global Descriptor Table...\n");
 
     const memory_stats = memory.getMemoryStats();
-    const phys_limit: u32 = @truncate(memory_stats.total_memory - 1);
+    // Each unit in the GDT limit field represents a 4KB block when G=1
+    const total_memory_bytes = memory_stats.total_memory;
+    const memory_blocks_4k = total_memory_bytes / 4096;
+    const segment_limit_in_4k_blocks: u32 = @truncate(memory_blocks_4k - 1);
+
     screen.write("Physical Memory: ");
-    utils.printDec(@truncate(memory_stats.total_memory / 1024 / 1024));
+    utils.printDec(@truncate(total_memory_bytes / 1024 / 1024));
     screen.write(" MB\n");
 
+    // Each GDT entry's limit field will be interpreted as count of 4KB blocks
     gdt[0] = GdtEntry.init(0, 0, makeNullFlags(), makeNullGranularity());
-    gdt[1] = GdtEntry.init(0, phys_limit, makeKernelCodeFlags(), makeSegmentGranularity());
-    gdt[2] = GdtEntry.init(0, phys_limit, makeKernelDataFlags(), makeSegmentGranularity());
-    gdt[3] = GdtEntry.init(0, phys_limit, makeUserCodeFlags(), makeSegmentGranularity());
-    gdt[4] = GdtEntry.init(0, phys_limit, makeUserDataFlags(), makeSegmentGranularity());
+    gdt[1] = GdtEntry.init(0, segment_limit_in_4k_blocks, makeKernelCodeFlags(), makeSegmentGranularity());
+    gdt[2] = GdtEntry.init(0, segment_limit_in_4k_blocks, makeKernelDataFlags(), makeSegmentGranularity());
+    gdt[3] = GdtEntry.init(0, segment_limit_in_4k_blocks, makeUserCodeFlags(), makeSegmentGranularity());
+    gdt[4] = GdtEntry.init(0, segment_limit_in_4k_blocks, makeUserDataFlags(), makeSegmentGranularity());
 
+    // TSS doesn't use 4KB blocks, so its limit is a normal byte count
     screen.write("[GDT] Setting up TSS entry...\n");
     const tss = @import("tss.zig").getTSS();
-    const tss_base = @intFromPtr(tss);
-    const tss_limit = @sizeOf(@TypeOf(tss.*));
+    const tss_base_addr = @intFromPtr(tss);
+    const tss_size_bytes = @sizeOf(@TypeOf(tss.*));
 
     screen.write("[GDT] TSS base=0x");
-    utils.printHex32(tss_base);
+    utils.printHex32(tss_base_addr);
     screen.write(" limit=0x");
-    utils.printHex32(tss_limit);
+    utils.printHex32(tss_size_bytes);
     screen.write("\n");
 
     if (TSS_INDEX >= GDT_ENTRIES) {
@@ -226,7 +232,7 @@ pub fn initGDT() void {
         return;
     }
 
-    gdt[TSS_INDEX] = GdtEntry.initSystem(tss_base, tss_limit, makeTSSFlags(), GranularityFlags{
+    gdt[TSS_INDEX] = GdtEntry.initSystem(tss_base_addr, tss_size_bytes, makeTSSFlags(), GranularityFlags{
         .size = false,
         .granularity = false,
     });

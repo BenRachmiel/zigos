@@ -7,7 +7,6 @@ const memory = @import("../memory.zig");
 
 fn calculateLimit(entry: gdt.GdtEntry) u32 {
     const screen = vga.getScreen();
-
     screen.write("\nLimit calculation:\n");
     screen.write("  granularity byte: 0x");
     utils.printHex8(entry.granularity);
@@ -17,8 +16,9 @@ fn calculateLimit(entry: gdt.GdtEntry) u32 {
     utils.printHex16(entry.limit_low);
     screen.write("\n");
 
+    const g_bit = (entry.granularity & 0x80) != 0;
     const raw_limit = (@as(u32, entry.granularity & 0x0F) << 16) | entry.limit_low;
-    return raw_limit;
+    return if (g_bit) (raw_limit << 12) | 0xFFF else raw_limit;
 }
 
 fn verifySegmentDescriptor(entry: gdt.GdtEntry, index: usize, expected_base: u32, expected_limit: u32, expected_access: gdt.AccessFlags) void {
